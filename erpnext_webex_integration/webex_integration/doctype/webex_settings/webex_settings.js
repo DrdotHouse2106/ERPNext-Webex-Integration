@@ -1,6 +1,8 @@
 frappe.ui.form.on("Webex Settings", {
 	refresh(frm) {
-		erpnext_webex_integration.show_oauth_result();
+		if (window.erpnext_webex_integration && typeof erpnext_webex_integration.show_oauth_result === "function") {
+			erpnext_webex_integration.show_oauth_result();
+		}
 
 		frm.add_custom_button(__("Mit Webex verbinden"), () => {
 			if (frm.is_dirty()) {
