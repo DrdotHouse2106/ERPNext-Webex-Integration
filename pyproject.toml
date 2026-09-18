@@ -1,0 +1,23 @@
+[build-system]
+requires = ["flit_core >=3.4,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "erpnext_webex_integration"
+authors = [
+    { name = "DrdotHouse2106", email = "drdothouse@gmail.com" }
+]
+description = "ERPNext-Erweiterung zur Integration von Cisco Webex Calling: Anrufdokumentation, Telefonbuch-Synchronisation und Click-to-Call."
+requires-python = ">=3.10"
+readme = "README.md"
+dynamic = ["version"]
+dependencies = [
+    "requests>=2.28.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/DrdotHouse2106/ERPNext-Webex-Integration"
+Repository = "https://github.com/DrdotHouse2106/ERPNext-Webex-Integration"
+
+[tool.flit.module]
+name = "erpnext_webex_integration"

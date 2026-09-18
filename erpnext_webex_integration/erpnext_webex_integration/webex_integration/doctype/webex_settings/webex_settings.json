@@ -1,0 +1,223 @@
+{
+ "actions": [],
+ "creation": "2026-09-18 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "sb_connection",
+  "enabled",
+  "webex_api_base_url",
+  "cdr_api_base_url",
+  "org_id",
+  "access_token",
+  "column_break_conn",
+  "webhook_secret",
+  "webhook_url",
+  "debug_logging",
+  "sb_call_history",
+  "auto_pull_call_history",
+  "call_history_lookback_minutes",
+  "column_break_ch",
+  "default_country_code",
+  "last_call_history_sync",
+  "sb_phonebook",
+  "auto_sync_phonebook",
+  "phonebook_sync_frequency",
+  "sync_customers",
+  "sync_contacts",
+  "column_break_pb",
+  "contact_display_format",
+  "last_phonebook_sync",
+  "sb_click_to_call",
+  "enable_click_to_call",
+  "click_to_call_mode"
+ ],
+ "fields": [
+  {
+   "fieldname": "sb_connection",
+   "fieldtype": "Section Break",
+   "label": "Verbindung zu Webex"
+  },
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Integration aktiviert"
+  },
+  {
+   "default": "https://webexapis.com/v1",
+   "description": "Basis-URL der Webex-REST-API. In der Regel nicht ändern.",
+   "fieldname": "webex_api_base_url",
+   "fieldtype": "Data",
+   "label": "Webex API Basis-URL"
+  },
+  {
+   "default": "https://analytics.webexapis.com/v1",
+   "description": "Eigener Host für den Abruf des detaillierten Anrufprotokolls (CDR).",
+   "fieldname": "cdr_api_base_url",
+   "fieldtype": "Data",
+   "label": "CDR API Basis-URL"
+  },
+  {
+   "description": "Organisations-ID aus Control Hub (admin.webex.com).",
+   "fieldname": "org_id",
+   "fieldtype": "Data",
+   "label": "Webex Organisations-ID"
+  },
+  {
+   "description": "OAuth-Zugriffstoken einer Webex-Integration mit den benötigten Scopes (siehe README).",
+   "fieldname": "access_token",
+   "fieldtype": "Password",
+   "label": "Zugriffstoken"
+  },
+  {
+   "fieldname": "column_break_conn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Geheimnis zur Signaturprüfung eingehender Webex-Webhooks (Header X-Spark-Signature).",
+   "fieldname": "webhook_secret",
+   "fieldtype": "Password",
+   "label": "Webhook-Geheimnis"
+  },
+  {
+   "description": "Diese URL bei Webex als Webhook-Ziel für die Ressource \"telephony_calls\" hinterlegen.",
+   "fieldname": "webhook_url",
+   "fieldtype": "Data",
+   "label": "Webhook-Ziel-URL",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "description": "Schreibt Webex-API-Anfragen und -Antworten ins Frappe-Log (Fehlersuche).",
+   "fieldname": "debug_logging",
+   "fieldtype": "Check",
+   "label": "Debug-Protokollierung"
+  },
+  {
+   "fieldname": "sb_call_history",
+   "fieldtype": "Section Break",
+   "label": "Anrufprotokoll (Anrufe dokumentieren)"
+  },
+  {
+   "default": "0",
+   "description": "Ruft regelmäßig das detaillierte Anrufprotokoll (CDR) ab und legt Webex-Anrufprotokoll-Einträge an. Erfordert Admin-Zugang (Scope spark-admin:calling_cdr_read).",
+   "fieldname": "auto_pull_call_history",
+   "fieldtype": "Check",
+   "label": "Anrufprotokoll automatisch abrufen"
+  },
+  {
+   "default": "60",
+   "description": "Zeitraum, der bei jedem Abruf rückwirkend abgefragt wird.",
+   "fieldname": "call_history_lookback_minutes",
+   "fieldtype": "Int",
+   "label": "Abrufzeitraum (Minuten)"
+  },
+  {
+   "fieldname": "column_break_ch",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "+49",
+   "description": "Wird verwendet, um Rufnummern ohne Landesvorwahl zu ergänzen.",
+   "fieldname": "default_country_code",
+   "fieldtype": "Data",
+   "label": "Standard-Landesvorwahl"
+  },
+  {
+   "fieldname": "last_call_history_sync",
+   "fieldtype": "Datetime",
+   "label": "Letzter Abruf",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_phonebook",
+   "fieldtype": "Section Break",
+   "label": "Telefonbuch-Synchronisation"
+  },
+  {
+   "default": "0",
+   "description": "Synchronisiert Kunden-/Kontakt-Rufnummern ins Webex-Organisationstelefonbuch. Erfordert Admin-Zugang (Scope Identity:contact).",
+   "fieldname": "auto_sync_phonebook",
+   "fieldtype": "Check",
+   "label": "Telefonbuch automatisch synchronisieren"
+  },
+  {
+   "default": "Täglich",
+   "fieldname": "phonebook_sync_frequency",
+   "fieldtype": "Select",
+   "label": "Synchronisationsintervall",
+   "options": "Stündlich\nTäglich"
+  },
+  {
+   "default": "1",
+   "fieldname": "sync_customers",
+   "fieldtype": "Check",
+   "label": "Kunden synchronisieren"
+  },
+  {
+   "default": "1",
+   "fieldname": "sync_contacts",
+   "fieldtype": "Check",
+   "label": "Kontakte synchronisieren"
+  },
+  {
+   "fieldname": "column_break_pb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "{customer_name} ({customer_id})",
+   "description": "Platzhalter: {customer_name}, {customer_id}, {first_name}, {last_name}",
+   "fieldname": "contact_display_format",
+   "fieldtype": "Data",
+   "label": "Anzeigeformat im Webex-Telefonbuch"
+  },
+  {
+   "fieldname": "last_phonebook_sync",
+   "fieldtype": "Datetime",
+   "label": "Letzte Synchronisation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_click_to_call",
+   "fieldtype": "Section Break",
+   "label": "Click-to-Call"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_click_to_call",
+   "fieldtype": "Check",
+   "label": "Button \"Anruf starten\" anzeigen"
+  },
+  {
+   "default": "tel:-Link (kein Admin-Zugang nötig)",
+   "description": "tel:-Link öffnet die lokale Webex-App zum Anrufen. Die Call-Control-API startet den Anruf serverseitig über Webex (erfordert pro Benutzer ein eigenes OAuth-Token, siehe README/Roadmap).",
+   "fieldname": "click_to_call_mode",
+   "fieldtype": "Select",
+   "label": "Modus",
+   "options": "tel:-Link (kein Admin-Zugang nötig)\nWebex Call-Control-API"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-09-18 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Webex Integration",
+ "name": "Webex Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "track_changes": 1
+}

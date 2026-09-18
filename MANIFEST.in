@@ -1,0 +1,10 @@
+include MANIFEST.in
+include *.txt
+include *.json
+include *.md
+recursive-include erpnext_webex_integration *.json
+recursive-include erpnext_webex_integration *.md
+recursive-include erpnext_webex_integration *.py
+recursive-include erpnext_webex_integration *.js
+recursive-include erpnext_webex_integration *.css
+recursive-exclude erpnext_webex_integration *.pyc

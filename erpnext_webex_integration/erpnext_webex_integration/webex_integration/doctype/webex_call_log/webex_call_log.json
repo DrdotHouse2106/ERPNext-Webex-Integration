@@ -1,0 +1,213 @@
+{
+ "actions": [],
+ "autoname": "format:WCL-{#####}",
+ "creation": "2026-09-18 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "call_id",
+  "source",
+  "column_break_1",
+  "direction",
+  "status",
+  "sb_time",
+  "start_time",
+  "end_time",
+  "column_break_2",
+  "duration_seconds",
+  "sb_numbers",
+  "from_number",
+  "to_number",
+  "sb_party",
+  "customer",
+  "contact",
+  "column_break_3",
+  "lead",
+  "user",
+  "sb_notes",
+  "notes",
+  "sb_raw",
+  "raw_payload"
+ ],
+ "fields": [
+  {
+   "description": "Eindeutige Anruf-ID von Webex (webhook callId bzw. CDR-Datensatz).",
+   "fieldname": "call_id",
+   "fieldtype": "Data",
+   "in_list_view": 0,
+   "label": "Webex Anruf-ID",
+   "unique": 1
+  },
+  {
+   "default": "Manuell",
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "label": "Quelle",
+   "options": "Webhook\nCDR-Abruf\nManuell"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "direction",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Richtung",
+   "options": "Eingehend\nAusgehend"
+  },
+  {
+   "default": "Beendet",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Klingelt\nVerbunden\nBeendet\nVerpasst\nAbgelehnt"
+  },
+  {
+   "fieldname": "sb_time",
+   "fieldtype": "Section Break",
+   "label": "Zeitpunkt"
+  },
+  {
+   "fieldname": "start_time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Beginn"
+  },
+  {
+   "fieldname": "end_time",
+   "fieldtype": "Datetime",
+   "label": "Ende"
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "duration_seconds",
+   "fieldtype": "Int",
+   "label": "Dauer (Sekunden)"
+  },
+  {
+   "fieldname": "sb_numbers",
+   "fieldtype": "Section Break",
+   "label": "Rufnummern"
+  },
+  {
+   "fieldname": "from_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Von"
+  },
+  {
+   "fieldname": "to_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "An"
+  },
+  {
+   "fieldname": "sb_party",
+   "fieldtype": "Section Break",
+   "label": "Zuordnung"
+  },
+  {
+   "fieldname": "customer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Kunde",
+   "options": "Customer"
+  },
+  {
+   "fieldname": "contact",
+   "fieldtype": "Link",
+   "label": "Kontakt",
+   "options": "Contact"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "lead",
+   "fieldtype": "Link",
+   "label": "Lead",
+   "options": "Lead"
+  },
+  {
+   "fieldname": "user",
+   "fieldtype": "Link",
+   "label": "Bearbeiter",
+   "options": "User"
+  },
+  {
+   "fieldname": "sb_notes",
+   "fieldtype": "Section Break",
+   "label": "Gesprächsnotiz"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Text Editor",
+   "label": "Notizen"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "sb_raw",
+   "fieldtype": "Section Break",
+   "label": "Rohdaten"
+  },
+  {
+   "fieldname": "raw_payload",
+   "fieldtype": "Code",
+   "label": "Rohdaten (JSON)",
+   "options": "JSON",
+   "print_hide": 1
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-18 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Webex Integration",
+ "name": "Webex Call Log",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales User",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "start_time",
+ "sort_order": "DESC",
+ "title_field": "call_id",
+ "track_changes": 1
+}

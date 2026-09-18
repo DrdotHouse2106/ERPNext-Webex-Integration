@@ -1,0 +1,2 @@
+# Liste der Patches, die bei "bench migrate" ausgeführt werden.
+# siehe: https://docs.frappe.io/framework/user/en/tutorial/generate-and-run-patches
