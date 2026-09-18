@@ -6,6 +6,7 @@
  "engine": "InnoDB",
  "field_order": [
   "call_id",
+  "call_session_id",
   "source",
   "column_break_1",
   "direction",
@@ -31,12 +32,17 @@
  ],
  "fields": [
   {
-   "description": "Eindeutige Anruf-ID von Webex (webhook callId bzw. CDR-Datensatz).",
+   "description": "ID des einzelnen Anruf-Schenkels (Webhook callId). Kann sich pro beteiligter Person/Gerät unterscheiden, auch wenn es sich um denselben echten Anruf handelt.",
    "fieldname": "call_id",
    "fieldtype": "Data",
    "in_list_view": 0,
-   "label": "Webex Anruf-ID",
-   "unique": 1
+   "label": "Webex Anruf-ID (Call Leg)"
+  },
+  {
+   "description": "Eindeutige ID des gesamten Anrufs (Webhook callSessionId). Dient als Schlüssel, um Ereignisse mehrerer Personen/Legs sowie Webhook- und CDR-Daten demselben Anruf zuzuordnen, statt Duplikate anzulegen.",
+   "fieldname": "call_session_id",
+   "fieldtype": "Data",
+   "label": "Anruf-Sitzungs-ID"
   },
   {
    "default": "Manuell",

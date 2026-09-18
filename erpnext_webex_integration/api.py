@@ -81,21 +81,31 @@ def _handle_call_webhook_payload(payload):
 
 	data = payload.get("data") or {}
 	call_id = data.get("callId") or payload.get("id")
+	call_session_id = data.get("callSessionId")
 	if not call_id:
 		return
 
 	event_type = (data.get("eventType") or payload.get("event") or "").lower()
 	status = EVENT_TYPE_TO_STATUS.get(event_type, "Beendet")
 
-	existing_name = frappe.db.get_value("Webex Call Log", {"call_id": call_id, "source": "Webhook"})
-	call_log = (
-		frappe.get_doc("Webex Call Log", existing_name)
-		if existing_name
-		else frappe.new_doc("Webex Call Log")
-	)
+	# callSessionId identifiziert den gesamten echten Anruf (ueber alle beteiligten
+	# Personen/Geraete hinweg), waehrend callId nur einen einzelnen Anruf-Schenkel
+	# meint. Wird z.B. eine Hunt Group von mehreren Kollegen gleichzeitig geklingelt,
+	# feuert der Webhook pro Person - ueber callSessionId landet das trotzdem in
+	# einem einzigen Datensatz statt in mehreren Duplikaten.
+	existing_name = None
+	if call_session_id:
+		existing_name = frappe.db.get_value("Webex Call Log", {"call_session_id": call_session_id})
+	if not existing_name:
+		existing_name = frappe.db.get_value("Webex Call Log", {"call_id": call_id})
+
+	is_new = not existing_name
+	call_log = frappe.get_doc("Webex Call Log", existing_name) if existing_name else frappe.new_doc("Webex Call Log")
 
 	call_log.call_id = call_id
-	call_log.source = "Webhook"
+	call_log.call_session_id = call_session_id or call_log.call_session_id
+	if is_new:
+		call_log.source = "Webhook"
 	call_log.status = status
 	call_log.raw_payload = json.dumps(payload, indent=2)
 

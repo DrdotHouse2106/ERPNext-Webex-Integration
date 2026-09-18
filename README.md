@@ -9,6 +9,7 @@ Eine [Frappe](https://frappeframework.com/)/[ERPNext](https://erpnext.com/)-App,
 - **Anrufe dokumentieren**: Ein- und ausgehende Telefonate werden automatisch als *Webex Call Log*-Einträge in ERPNext angelegt und, sofern anhand der Rufnummer möglich, direkt einem **Kunden**, **Kontakt** oder **Lead** zugeordnet. Jeder Eintrag kann um eine Gesprächsnotiz ergänzt werden.
   - Über **Webhooks** (Echtzeit, Ressource `telephony_calls`) und/oder
   - über den regelmäßigen Abruf des **detaillierten Anrufprotokolls (CDR)** von Webex.
+  - Beide Quellen werden über `callSessionId` (Webhook) bzw. `Correlation ID` (CDR) demselben echten Anruf zugeordnet und in einem Datensatz zusammengeführt – auch wenn z. B. mehrere Kollegen einer Hunt Group gleichzeitig geklingelt werden, entsteht kein doppelter Eintrag.
 - **Telefonbuch-Synchronisation**: Rufnummern von Kunden und Kontakten werden ins **Webex-Organisationstelefonbuch** übertragen – inklusive Kundennummer im Anzeigenamen (z. B. `Mustermann GmbH (CUST-00042)`), damit bei eingehenden Anrufen sofort erkennbar ist, wer anruft.
 - **Click-to-Call**: Button "Anruf starten" auf Kunde und Kontakt. Standardmäßig per `tel:`-Link (öffnet die lokale Webex-App, funktioniert ohne Admin-Rechte), optional serverseitig über die Webex Call-Control-API.
 - Jeder Anruf-/Sync-Vorgang wird nachvollziehbar protokolliert (Rohdaten, Fehlerprotokoll).

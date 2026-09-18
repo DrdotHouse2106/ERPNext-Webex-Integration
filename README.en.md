@@ -9,6 +9,7 @@ A [Frappe](https://frappeframework.com/)/[ERPNext](https://erpnext.com/) app tha
 - **Call documentation**: incoming and outgoing calls are automatically logged as *Webex Call Log* records in ERPNext and, where the phone number allows a match, linked to a **Customer**, **Contact** or **Lead**. Every log entry can be annotated with call notes.
   - via **webhooks** (real-time, `telephony_calls` resource), and/or
   - via periodic polling of Webex's **Detailed Call History (CDR)** API.
+  - Both sources are matched to the same real call via `callSessionId` (webhook) / `Correlation ID` (CDR) and merged into a single record — so a hunt group ringing several colleagues at once doesn't create duplicate entries.
 - **Phonebook sync**: customer and contact phone numbers are pushed into the **Webex organization directory**, including the customer ID in the display name (e.g. `Acme Corp (CUST-00042)`), so incoming calls immediately show who is calling.
 - **Click-to-call**: an "Anruf starten" (Start call) button on Customer and Contact. Defaults to a `tel:` link (opens the local Webex app, no admin rights required), with an optional server-side mode using the Webex Call Control API.
 - Every call/sync operation is logged for traceability (raw payloads, error log).

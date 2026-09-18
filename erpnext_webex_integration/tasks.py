@@ -98,16 +98,13 @@ def _to_webex_timestamp(dt):
 
 def _create_call_log_from_cdr(record, settings):
 	# Feldnamen der CDR-Antwort koennen je Mandant/API-Version variieren - defensiv auslesen.
-	call_id = (
-		record.get("Call ID")
-		or record.get("callId")
-		or record.get("Correlation ID")
-		or record.get("correlationId")
-	)
-	if not call_id:
-		return
-
-	if frappe.db.exists("Webex Call Log", {"call_id": call_id, "source": "CDR-Abruf"}):
+	# "Correlation ID" verbindet laut Webex-CDR-Doku alle Anruf-Schenkel desselben
+	# echten Anrufs - das ist dasselbe Konzept wie callSessionId im Webhook und
+	# wird daher im selben Feld (call_session_id) abgelegt, um Webhook- und
+	# CDR-Datensaetze desselben Anrufs zusammenzufuehren statt zu duplizieren.
+	call_id = record.get("Call ID") or record.get("callId")
+	call_session_id = record.get("Correlation ID") or record.get("correlationId")
+	if not call_id and not call_session_id:
 		return
 
 	from_number = record.get("Calling number") or record.get("callingNumber")
@@ -117,29 +114,74 @@ def _create_call_log_from_cdr(record, settings):
 	start_time = record.get("Start time") or record.get("startTime")
 	answer_time = record.get("Answer time") or record.get("answerTime")
 
-	call_log = frappe.new_doc("Webex Call Log")
-	call_log.call_id = call_id
-	call_log.source = "CDR-Abruf"
-	call_log.direction = "Eingehend" if "incoming" in direction_raw else "Ausgehend"
-	call_log.status = "Verbunden" if answer_time else "Verpasst"
-	call_log.from_number = from_number
-	call_log.to_number = to_number
-	if start_time:
+	existing_name = None
+	if call_session_id:
+		existing_name = frappe.db.get_value("Webex Call Log", {"call_session_id": call_session_id})
+	if not existing_name and call_id:
+		existing_name = frappe.db.get_value("Webex Call Log", {"call_id": call_id})
+	if not existing_name and start_time:
+		lookup_number = to_number if "incoming" in direction_raw else from_number
+		existing_name = _find_recent_call_log_by_number_and_time(lookup_number, get_datetime(start_time))
+
+	is_new = not existing_name
+	call_log = (
+		frappe.get_doc("Webex Call Log", existing_name) if existing_name else frappe.new_doc("Webex Call Log")
+	)
+
+	if call_id:
+		call_log.call_id = call_id
+	if call_session_id:
+		call_log.call_session_id = call_session_id
+	if is_new:
+		call_log.source = "CDR-Abruf"
+		call_log.direction = "Eingehend" if "incoming" in direction_raw else "Ausgehend"
+	if answer_time and call_log.status in (None, "", "Klingelt", "Beendet"):
+		call_log.status = "Verbunden"
+	elif not answer_time and call_log.status in (None, "", "Klingelt"):
+		call_log.status = "Verpasst"
+	call_log.from_number = call_log.from_number or from_number
+	call_log.to_number = call_log.to_number or to_number
+	if start_time and not call_log.start_time:
 		call_log.start_time = get_datetime(start_time)
-	try:
-		call_log.duration_seconds = int(duration)
-	except (TypeError, ValueError):
-		call_log.duration_seconds = 0
+	if not call_log.duration_seconds:
+		try:
+			call_log.duration_seconds = int(duration)
+		except (TypeError, ValueError):
+			pass
 	call_log.raw_payload = json.dumps(record, indent=2, default=str)
 
 	lookup_number = to_number if call_log.direction == "Eingehend" else from_number
 	match = utils.find_party_by_phone(lookup_number) if lookup_number else None
 	if match:
-		call_log.customer = match.get("customer")
-		call_log.contact = match.get("contact")
-		call_log.lead = match.get("lead")
+		call_log.customer = call_log.customer or match.get("customer")
+		call_log.contact = call_log.contact or match.get("contact")
+		call_log.lead = call_log.lead or match.get("lead")
 
-	call_log.insert(ignore_permissions=True)
+	if is_new:
+		call_log.insert(ignore_permissions=True)
+	else:
+		call_log.save(ignore_permissions=True)
+
+
+def _find_recent_call_log_by_number_and_time(number, start_time, tolerance_minutes=3):
+	"""Fallback-Abgleich, falls Webhook und CDR unterschiedliche IDs fuer denselben
+	Anruf verwenden: gleiche Rufnummer der Gegenseite und Anrufbeginn innerhalb
+	eines kurzen Zeitfensters gelten als derselbe Anruf."""
+	digits = utils.last_significant_digits(number)
+	if not digits:
+		return None
+
+	candidates = frappe.get_all(
+		"Webex Call Log",
+		filters=[
+			["start_time", ">=", add_to_date(start_time, minutes=-tolerance_minutes)],
+			["start_time", "<=", add_to_date(start_time, minutes=tolerance_minutes)],
+		],
+		or_filters=[["from_number", "like", f"%{digits}"], ["to_number", "like", f"%{digits}"]],
+		pluck="name",
+		limit=1,
+	)
+	return candidates[0] if candidates else None
 
 
 # ----------------------------------------------------------------------
