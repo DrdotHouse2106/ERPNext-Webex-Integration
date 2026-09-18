@@ -12,7 +12,13 @@ frappe.ui.form.on("Webex Settings", {
 					value: df.fieldname,
 					label: `${df.label || df.fieldname} (${df.fieldname})`,
 				}));
-			frm.set_df_property("customer_brand_fieldname", "options", options);
+			const field = frm.fields_dict.customer_brand_fieldname;
+			if (field && typeof field.set_data === "function") {
+				field.set_data(options);
+			} else {
+				frm.set_df_property("customer_brand_fieldname", "options", options);
+				frm.refresh_field("customer_brand_fieldname");
+			}
 		});
 
 		frm.add_custom_button(__("Mit Webex verbinden"), () => {
