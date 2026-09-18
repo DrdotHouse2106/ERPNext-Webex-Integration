@@ -29,6 +29,17 @@ frappe.ui.form.on("Webex Settings", {
 			});
 		});
 
+		frm.add_custom_button(__("Zufälliges Webhook-Geheimnis erzeugen"), () => {
+			const bytes = new Uint8Array(24);
+			window.crypto.getRandomValues(bytes);
+			const secret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+			frm.set_value("webhook_secret", secret);
+			frappe.show_alert({
+				message: __("Geheimnis erzeugt – bitte speichern und danach den Webhook (neu) registrieren."),
+				indicator: "blue",
+			});
+		});
+
 		frm.add_custom_button(__("Anrufprotokoll-Webhook registrieren"), () => {
 			frappe.call({
 				method: "register_call_webhook",
