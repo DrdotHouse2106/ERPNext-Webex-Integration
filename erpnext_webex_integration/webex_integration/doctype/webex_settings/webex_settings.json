@@ -251,10 +251,9 @@
    "options": "tel:-Link (kein Admin-Zugang nötig)\nWebex Call-Control-API"
   },
   {
-   "default": "vi_versandabsender",
    "description": "Technischer Fieldname des Marke-Felds am Customer-Doctype (stammt aus einer anderen App). Wird genutzt, um beim Click-to-Call automatisch die passende Anrufer-ID aus \"Webex Brand Line\" zu setzen. Leer lassen, um diese Funktion zu deaktivieren.",
    "fieldname": "customer_brand_fieldname",
-   "fieldtype": "Data",
+   "fieldtype": "Autocomplete",
    "label": "Marke-Feld am Kunden (Fieldname)"
   }
  ],

@@ -4,6 +4,17 @@ frappe.ui.form.on("Webex Settings", {
 			erpnext_webex_integration.show_oauth_result();
 		}
 
+		frappe.model.with_doctype("Customer", () => {
+			const options = frappe
+				.get_meta("Customer")
+				.fields.filter((df) => !df.is_virtual && df.fieldname)
+				.map((df) => ({
+					value: df.fieldname,
+					label: `${df.label || df.fieldname} (${df.fieldname})`,
+				}));
+			frm.set_df_property("customer_brand_fieldname", "options", options);
+		});
+
 		frm.add_custom_button(__("Mit Webex verbinden"), () => {
 			if (frm.is_dirty()) {
 				frappe.msgprint(__("Bitte zuerst speichern, damit Client ID/Secret gesichert sind."));
