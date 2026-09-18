@@ -21,3 +21,6 @@ Repository = "https://github.com/DrdotHouse2106/ERPNext-Webex-Integration"
 
 [tool.flit.module]
 name = "erpnext_webex_integration"
+
+[tool.bench.frappe-dependencies]
+frappe = ">=14.0.0,<16.0.0"
