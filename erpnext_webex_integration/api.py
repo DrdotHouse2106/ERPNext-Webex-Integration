@@ -17,7 +17,8 @@ WEBEX_TOKEN_URL = "https://webexapis.com/v1/access_token"
 OAUTH_SCOPES = (
 	"spark:calls_write spark:calls_read spark-admin:calling_cdr_read "
 	"Identity:contact spark:webhooks_write spark:webhooks_read "
-	"spark-admin:people_read spark-admin:people_write"
+	"spark-admin:people_read spark-admin:people_write "
+	"spark-admin:telephony_config_read"
 )
 
 EVENT_TYPE_TO_STATUS = {
@@ -261,6 +262,55 @@ def pull_call_history_now():
 
 	pull_call_history()
 	return {"status": "ok"}
+
+
+@frappe.whitelist()
+def import_brand_lines_from_webex():
+	"""Liest alle Rufnummern der Organisation und legt/aktualisiert daraus
+	"Webex Brand Line"-Einträge an (Marke = Location-Name, Rufnummer = zugehörige Nummer).
+
+	Das genaue Feldschema der Webex-Antwort (phoneNumber/location/mainNumber) ist aus der
+	API-Dokumentation abgeleitet, aber nicht gegen jeden Tenant verifiziert - deshalb wird
+	die vollständige Rohliste zusätzlich zurückgegeben, damit Abweichungen sofort auffallen."""
+	frappe.only_for("System Manager")
+	settings = frappe.get_single("Webex Settings")
+	client = WebexClient(settings=settings)
+
+	try:
+		numbers = client.list_phone_numbers(org_id=settings.org_id)
+	except WebexAPIError as exc:
+		frappe.throw(str(exc))
+
+	created, updated, skipped = [], [], []
+	for entry in numbers:
+		location = entry.get("location") or {}
+		brand = location.get("name")
+		phone_number = entry.get("phoneNumber") or entry.get("phoneNumbers")
+		if not brand or not phone_number:
+			skipped.append(entry)
+			continue
+
+		if entry.get("mainNumber") is False and frappe.db.exists("Webex Brand Line", {"brand": brand}):
+			# Falls eine Location mehrere Nummern hat, bevorzugen wir die Hauptnummer
+			# und lassen bereits vorhandene Zuordnungen fuer diese Marke unangetastet.
+			continue
+
+		if frappe.db.exists("Webex Brand Line", brand):
+			frappe.db.set_value("Webex Brand Line", brand, "phone_number", phone_number)
+			updated.append(brand)
+		else:
+			frappe.get_doc(
+				{"doctype": "Webex Brand Line", "brand": brand, "phone_number": phone_number}
+			).insert(ignore_permissions=True)
+			created.append(brand)
+
+	frappe.db.commit()
+	return {
+		"created": created,
+		"updated": updated,
+		"skipped_count": len(skipped),
+		"raw_sample": numbers[:3],
+	}
 
 
 @frappe.whitelist()

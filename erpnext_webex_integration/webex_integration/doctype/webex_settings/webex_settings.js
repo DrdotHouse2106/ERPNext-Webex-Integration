@@ -62,6 +62,26 @@ frappe.ui.form.on("Webex Settings", {
 			});
 		});
 
+		frm.add_custom_button(__("Marken-Rufnummern von Webex importieren"), () => {
+			frappe.call({
+				method: "erpnext_webex_integration.api.import_brand_lines_from_webex",
+				freeze: true,
+				callback: (r) => {
+					const res = r.message || {};
+					frappe.msgprint({
+						title: __("Import abgeschlossen"),
+						message: __("Neu: {0}<br>Aktualisiert: {1}<br>Übersprungen: {2}<br><br>Beispiel-Rohdaten:<br><pre>{3}</pre>", [
+							(res.created || []).join(", ") || "-",
+							(res.updated || []).join(", ") || "-",
+							res.skipped_count,
+							JSON.stringify(res.raw_sample, null, 2),
+						]),
+						indicator: "green",
+					});
+				},
+			});
+		});
+
 		frm.add_custom_button(__("Anrufer-ID-Einstellungen anzeigen (Debug)"), () => {
 			frappe.call({
 				method: "erpnext_webex_integration.api.debug_caller_id_settings",
