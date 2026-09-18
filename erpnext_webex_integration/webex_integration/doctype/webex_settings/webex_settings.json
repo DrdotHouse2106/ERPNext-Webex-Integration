@@ -219,8 +219,8 @@
    "fieldtype": "Column Break"
   },
   {
-   "default": "{customer_name} ({customer_id})",
-   "description": "Platzhalter: {customer_name}, {customer_id}, {first_name}, {last_name}",
+   "default": "({brand_abbr}) {customer_name} ({customer_id})",
+   "description": "Platzhalter: {customer_name}, {customer_id}, {first_name}, {last_name}, {brand_abbr} (Kürzel aus \"Webex Brand Line\", leer falls keine Marke zugeordnet oder kein Kürzel gepflegt).",
    "fieldname": "contact_display_format",
    "fieldtype": "Data",
    "label": "Anzeigeformat im Webex-Telefonbuch"

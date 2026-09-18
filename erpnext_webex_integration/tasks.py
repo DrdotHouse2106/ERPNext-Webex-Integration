@@ -259,6 +259,7 @@ def sync_single_customer(customer_name, client=None, settings=None):
 		customer_id=customer.name,
 		first_name=customer.customer_name,
 		last_name="",
+		brand_abbr=_get_brand_abbr(customer_name, settings),
 	)
 	payload = _build_organization_contact_payload(display_name, normalized)
 
@@ -292,6 +293,7 @@ def sync_single_contact(contact_name, client=None, settings=None):
 		customer_id=customer_name or contact.name,
 		first_name=contact.first_name or "",
 		last_name=contact.last_name or "",
+		brand_abbr=_get_brand_abbr(customer_name, settings) if customer_name else "",
 	)
 	payload = _build_organization_contact_payload(
 		display_name, normalized, first_name=contact.first_name, last_name=contact.last_name
@@ -304,6 +306,20 @@ def sync_single_contact(contact_name, client=None, settings=None):
 		contact_id = result.get("id")
 		if contact_id:
 			frappe.db.set_value("Contact", contact_name, "webex_contact_id", contact_id)
+
+
+def _get_brand_abbr(customer_name, settings):
+	"""Liefert das Kürzel der Marke des Kunden (z.B. "GFV"), falls konfiguriert -
+	sonst einen leeren String, damit {brand_abbr} im Anzeigeformat immer nutzbar ist."""
+	brand_fieldname = settings.customer_brand_fieldname
+	if not brand_fieldname or not customer_name:
+		return ""
+
+	brand = frappe.db.get_value("Customer", customer_name, brand_fieldname)
+	if not brand:
+		return ""
+
+	return frappe.db.get_value("Webex Brand Line", {"brand": brand}, "abbreviation") or ""
 
 
 def _build_organization_contact_payload(display_name, phone_number, first_name=None, last_name=None):
