@@ -72,11 +72,11 @@ frappe.ui.form.on("Webex Settings", {
 					const res = r.message || {};
 					frappe.msgprint({
 						title: __("Import abgeschlossen"),
-						message: __("Neu: {0}<br>Aktualisiert: {1}<br>Übersprungen: {2}<br><br>Beispiel-Rohdaten:<br><pre>{3}</pre>", [
+						message: __("Neu: {0}<br>Aktualisiert: {1}<br>Übersprungen: {2}<br><br>Zugewiesene Nummern (Rohdaten):<br><pre>{3}</pre>", [
 							(res.created || []).join(", ") || "-",
 							(res.updated || []).join(", ") || "-",
 							res.skipped_count,
-							JSON.stringify(res.raw_sample, null, 2),
+							JSON.stringify(res.debug_entries_with_owner, null, 2),
 						]),
 						indicator: "green",
 					});

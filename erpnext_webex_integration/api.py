@@ -267,11 +267,16 @@ def pull_call_history_now():
 @frappe.whitelist()
 def import_brand_lines_from_webex():
 	"""Liest alle Rufnummern der Organisation und legt/aktualisiert daraus
-	"Webex Brand Line"-Einträge an (Marke = Location-Name, Rufnummer = zugehörige Nummer).
+	"Webex Brand Line"-Einträge an.
 
-	Das genaue Feldschema der Webex-Antwort (phoneNumber/location/mainNumber) ist aus der
-	API-Dokumentation abgeleitet, aber nicht gegen jeden Tenant verifiziert - deshalb wird
-	die vollständige Rohliste zusätzlich zurückgegeben, damit Abweichungen sofort auffallen."""
+	Bei diesem Kunden ist jede Marke als eigene Hunt Group eingerichtet
+	(alle Nummern liegen unter derselben Location "Hauptstandort", siehe Export
+	aus Control Hub). Die Marke ergibt sich daher aus dem Namen der Hunt Group,
+	der einer Nummer zugewiesen ist (Feld "owner" in der Webex-Antwort), nicht
+	aus der Location. Das genaue Feldschema für "owner" ist aus der API-Doku-
+	Struktur abgeleitet, aber nicht gegen jeden Tenant verifiziert - deshalb
+	werden alle Einträge mit einer Zuweisung zusätzlich als Rohdaten zurückgegeben,
+	damit Abweichungen sofort auffallen."""
 	frappe.only_for("System Manager")
 	settings = frappe.get_single("Webex Settings")
 	client = WebexClient(settings=settings)
@@ -282,18 +287,24 @@ def import_brand_lines_from_webex():
 		frappe.throw(str(exc))
 
 	created, updated, skipped = [], [], []
+	assigned_entries = []
 	for entry in numbers:
-		location = entry.get("location") or {}
-		brand = location.get("name")
-		phone_number = entry.get("phoneNumber") or entry.get("phoneNumbers")
-		if not brand or not phone_number:
-			skipped.append(entry)
+		phone_number = entry.get("phoneNumber")
+		owner = entry.get("owner") or entry.get("assignedTo") or {}
+		owner_type = (owner.get("type") or "").upper()
+		owner_name = (owner.get("name") or "").strip() or " ".join(
+			filter(None, [owner.get("firstName"), owner.get("lastName")])
+		).strip()
+
+		if owner_name:
+			assigned_entries.append(entry)
+
+		is_hunt_group = "HUNT" in owner_type
+		if not phone_number or not owner_name or not is_hunt_group:
+			skipped.append(phone_number or owner_name or "(unbekannt)")
 			continue
 
-		if entry.get("mainNumber") is False and frappe.db.exists("Webex Brand Line", {"brand": brand}):
-			# Falls eine Location mehrere Nummern hat, bevorzugen wir die Hauptnummer
-			# und lassen bereits vorhandene Zuordnungen fuer diese Marke unangetastet.
-			continue
+		brand = owner_name
 
 		if frappe.db.exists("Webex Brand Line", brand):
 			frappe.db.set_value("Webex Brand Line", brand, "phone_number", phone_number)
@@ -309,7 +320,7 @@ def import_brand_lines_from_webex():
 		"created": created,
 		"updated": updated,
 		"skipped_count": len(skipped),
-		"raw_sample": numbers[:3],
+		"debug_entries_with_owner": assigned_entries[:5],
 	}
 
 

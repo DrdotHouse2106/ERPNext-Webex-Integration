@@ -96,11 +96,11 @@ class WebexClient:
 	# Rufnummern der Organisation (fuer Marken-Import)
 	# ------------------------------------------------------------------
 	def list_phone_numbers(self, org_id=None):
-		"""Listet alle Rufnummern der Organisation inkl. zugehoeriger Location.
+		"""Listet alle Rufnummern der Organisation inkl. Zuweisung (owner).
 
-		Scope: spark-admin:telephony_config_read. Jede Location entspricht bei
-		diesem Kunden einer Marke; der Location-Name liefert daher direkt den
-		Anzeigenamen, der beim Wechseln der Anrufer-ID in der Webex-App erscheint."""
+		Scope: spark-admin:telephony_config_read. Die Marke ergibt sich aus dem
+		Namen der Hunt Group, der eine Nummer zugewiesen ist (Feld "owner"),
+		nicht aus der Location - siehe import_brand_lines_from_webex()."""
 		params = {"orgId": org_id} if org_id else None
 		result = self._request("GET", f"{self.api_base_url}/telephony/config/numbers", params=params)
 		if isinstance(result, list):
