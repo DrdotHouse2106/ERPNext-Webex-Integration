@@ -25,9 +25,10 @@ Eine [Frappe](https://frappeframework.com/)/[ERPNext](https://erpnext.com/)-App,
 |---|---|---|
 | Click-to-Call (`tel:`-Link) | keiner (Client-seitig) | jeder Benutzer |
 | Click-to-Call (Call-Control-API, Dial) | `spark:calls_write` | Benutzer mit Webex-Calling-Lizenz |
+| Anrufdetails abrufen (Webhook-Anreicherung) | `spark:calls_read` | jeder Benutzer |
 | Anrufprotokoll-Abruf (CDR) | `spark-admin:calling_cdr_read` | Full- oder Read-only-Administrator **und** in Control Hub zusätzlich die Admin-Rolle „Webex Calling Detailed Call History API access" aktiviert |
-| Telefonbuch-Synchronisation (Organization Contacts) | `Identity:contact` (oder `Identity:SCIM`) | Full-Administrator der Organisation |
-| Webhook-Registrierung | `spark-admin:webhooks_write` | Administrator |
+| Telefonbuch-Synchronisation (Organization Contacts) | `Identity:contact` | Full-Administrator der Organisation |
+| Webhook-Registrierung | `spark:webhooks_write` (zum Prüfen zusätzlich `spark:webhooks_read`) | Benutzer mit Webex-Calling-Lizenz |
 
 Mit **vollen Administratorrechten** (Full Administrator) stehen grundsätzlich alle Funktionen zur Verfügung. Bei Reseller-Tenants (z. B. Placetel) kann es sein, dass einzelne Admin-Funktionen beim Reseller verbleiben – im Zweifel in Control Hub unter *Benutzer → eigenes Konto → Rollen* prüfen.
 

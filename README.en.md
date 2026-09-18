@@ -25,9 +25,10 @@ A [Frappe](https://frappeframework.com/)/[ERPNext](https://erpnext.com/) app tha
 |---|---|---|
 | Click-to-call (`tel:` link) | none (client-side) | any user |
 | Click-to-call (Call Control API, dial) | `spark:calls_write` | user with a Webex Calling license |
+| Fetch call details (webhook enrichment) | `spark:calls_read` | any user |
 | Call history sync (CDR) | `spark-admin:calling_cdr_read` | Full or Read-only Administrator **and** the admin role "Webex Calling Detailed Call History API access" enabled in Control Hub |
-| Phonebook sync (Organization Contacts) | `Identity:contact` (or `Identity:SCIM`) | Full Administrator of the organization |
-| Webhook registration | `spark-admin:webhooks_write` | Administrator |
+| Phonebook sync (Organization Contacts) | `Identity:contact` | Full Administrator of the organization |
+| Webhook registration | `spark:webhooks_write` (add `spark:webhooks_read` to inspect existing ones) | user with a Webex Calling license |
 
 With **Full Administrator** rights all features are generally available. On reseller tenants (e.g. Placetel) some admin capabilities may remain with the reseller — check under Control Hub → *Users → your account → Roles* if in doubt.
 
