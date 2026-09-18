@@ -27,7 +27,7 @@ A [Frappe](https://frappeframework.com/)/[ERPNext](https://erpnext.com/) app tha
 | Click-to-call (`tel:` link) | none (client-side) | any user |
 | Click-to-call (Call Control API, dial) | `spark:calls_write` | user with a Webex Calling license |
 | Fetch call details (webhook enrichment) | `spark:calls_read` | any user |
-| Call history sync (CDR) | `spark-admin:calling_cdr_read` | Full or Read-only Administrator **and** the admin role "Webex Calling Detailed Call History API access" enabled in Control Hub |
+| Call history sync (CDR) | `spark-admin:calling_cdr_read` | Full or Read-only Administrator **and** the admin role "Webex Calling Detailed Call History API access" enabled in Control Hub. **Important:** you cannot assign this role to yourself in Control Hub (the checkbox is greyed out on your own account) – a **different** administrator has to assign it to you. |
 | Phonebook sync (Organization Contacts) | `Identity:contact` | Full Administrator of the organization |
 | Webhook registration | `spark:webhooks_write` (add `spark:webhooks_read` to inspect existing ones) | user with a Webex Calling license |
 
