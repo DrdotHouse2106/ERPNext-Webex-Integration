@@ -145,7 +145,10 @@ class WebexClient:
 	def delete_organization_contact(self, contact_id):
 		return self._request("DELETE", f"{self.api_base_url}/organization/contacts/{contact_id}")
 
-	def list_organization_contacts(self, params=None):
+	def list_organization_contacts(self, org_id=None, params=None):
+		params = dict(params or {})
+		if org_id:
+			params["orgId"] = org_id
 		result = self._request("GET", f"{self.api_base_url}/organization/contacts", params=params)
 		if isinstance(result, list):
 			return result

@@ -336,7 +336,7 @@ def list_current_organization_contacts():
 	settings = frappe.get_single("Webex Settings")
 	client = WebexClient(settings=settings)
 	try:
-		return client.list_organization_contacts()
+		return client.list_organization_contacts(org_id=settings.org_id)
 	except WebexAPIError as exc:
 		frappe.throw(str(exc))
 
@@ -346,7 +346,7 @@ def pull_call_history_now():
 	frappe.only_for("System Manager")
 	from erpnext_webex_integration.tasks import pull_call_history
 
-	pull_call_history()
+	pull_call_history(force=True)
 	return {"status": "ok"}
 
 

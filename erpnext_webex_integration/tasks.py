@@ -65,15 +65,20 @@ def refresh_access_token():
 # ----------------------------------------------------------------------
 # Anrufprotokoll (CDR)
 # ----------------------------------------------------------------------
-def pull_call_history():
+def pull_call_history(force=False):
 	settings = frappe.get_single("Webex Settings")
-	if not settings.enabled or not settings.auto_pull_call_history:
+	if not settings.enabled:
+		return
+	if not force and not settings.auto_pull_call_history:
+		# Der automatische Scheduler-Job respektiert den Schalter "automatisch
+		# abrufen"; ein manueller Klick auf "Jetzt abrufen" (force=True) soll aber
+		# unabhängig davon immer einen Abruf ausführen.
 		return
 
 	lookback_minutes = settings.call_history_lookback_minutes or 60
 	end_time = add_to_date(now_datetime(), minutes=-5)  # Webex verlangt: Reportzeit >= 5 Min. alt
 	start_time = get_datetime(settings.last_call_history_sync) if settings.last_call_history_sync else None
-	if not start_time or start_time >= end_time:
+	if force or not start_time or start_time >= end_time:
 		start_time = add_to_date(end_time, minutes=-lookback_minutes)
 
 	client = WebexClient(settings=settings)
