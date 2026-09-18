@@ -29,7 +29,8 @@ frappe.ui.form.on("Webex Settings", {
 			});
 		});
 
-		frm.add_custom_button(__("Zufälliges Webhook-Geheimnis erzeugen"), () => {
+		// Gruppe: Webhook
+		frm.add_custom_button(__("Zufälliges Geheimnis erzeugen"), () => {
 			const bytes = new Uint8Array(24);
 			window.crypto.getRandomValues(bytes);
 			const secret = Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
@@ -38,9 +39,9 @@ frappe.ui.form.on("Webex Settings", {
 				message: __("Geheimnis erzeugt – bitte speichern und danach den Webhook (neu) registrieren."),
 				indicator: "blue",
 			});
-		});
+		}, __("Webhook"));
 
-		frm.add_custom_button(__("Anrufprotokoll-Webhook registrieren"), () => {
+		frm.add_custom_button(__("Webhook registrieren"), () => {
 			frappe.call({
 				method: "register_call_webhook",
 				doc: frm.doc,
@@ -49,9 +50,10 @@ frappe.ui.form.on("Webex Settings", {
 					frappe.show_alert({ message: __("Webhook registriert."), indicator: "green" });
 				},
 			});
-		});
+		}, __("Webhook"));
 
-		frm.add_custom_button(__("Telefonbuch jetzt synchronisieren"), () => {
+		// Gruppe: Telefonbuch
+		frm.add_custom_button(__("Jetzt synchronisieren"), () => {
 			frappe.call({
 				method: "erpnext_webex_integration.api.sync_phonebook_now",
 				freeze: true,
@@ -60,9 +62,9 @@ frappe.ui.form.on("Webex Settings", {
 					frm.reload_doc();
 				},
 			});
-		});
+		}, __("Telefonbuch"));
 
-		frm.add_custom_button(__("Marken-Rufnummern von Webex importieren"), () => {
+		frm.add_custom_button(__("Marken-Rufnummern importieren"), () => {
 			frappe.call({
 				method: "erpnext_webex_integration.api.import_brand_lines_from_webex",
 				freeze: true,
@@ -80,9 +82,22 @@ frappe.ui.form.on("Webex Settings", {
 					});
 				},
 			});
-		});
+		}, __("Telefonbuch"));
 
-		frm.add_custom_button(__("Anrufer-ID-Einstellungen anzeigen (Debug)"), () => {
+		// Gruppe: Anrufprotokoll
+		frm.add_custom_button(__("Jetzt abrufen"), () => {
+			frappe.call({
+				method: "erpnext_webex_integration.api.pull_call_history_now",
+				freeze: true,
+				callback: () => {
+					frappe.show_alert({ message: __("Abruf gestartet."), indicator: "green" });
+					frm.reload_doc();
+				},
+			});
+		}, __("Anrufprotokoll"));
+
+		// Gruppe: Debug
+		frm.add_custom_button(__("Anrufer-ID-Einstellungen anzeigen"), () => {
 			frappe.call({
 				method: "erpnext_webex_integration.api.debug_caller_id_settings",
 				freeze: true,
@@ -94,17 +109,6 @@ frappe.ui.form.on("Webex Settings", {
 					});
 				},
 			});
-		});
-
-		frm.add_custom_button(__("Anrufprotokoll jetzt abrufen"), () => {
-			frappe.call({
-				method: "erpnext_webex_integration.api.pull_call_history_now",
-				freeze: true,
-				callback: () => {
-					frappe.show_alert({ message: __("Abruf gestartet."), indicator: "green" });
-					frm.reload_doc();
-				},
-			});
-		});
+		}, __("Debug"));
 	},
 });
