@@ -10,6 +10,8 @@ A [Frappe](https://frappeframework.com/)/[ERPNext](https://erpnext.com/) app tha
   - via **webhooks** (real-time, `telephony_calls` resource), and/or
   - via periodic polling of Webex's **Detailed Call History (CDR)** API.
   - Both sources are matched to the same real call via `callSessionId` (webhook) / `Correlation ID` (CDR) and merged into a single record — so a hunt group ringing several colleagues at once doesn't create duplicate entries.
+  - If a phone number is added to a customer/contact **after the fact**, matching existing (previously unmatched) call log entries are linked to it retroactively.
+- **Screen-pop**: an incoming call immediately (while it's still ringing) shows a desk notification with the phone number, the matched customer/contact, and a direct link to the record. Delivery is based on the Webex person the call reaches (`actorId`), so it automatically works for additional agents too, once they connect their own Webex account (see Roadmap).
 - **Phonebook sync**: customer and contact phone numbers are pushed into the **Webex organization directory**, including the customer ID in the display name (e.g. `Acme Corp (CUST-00042)`), so incoming calls immediately show who is calling.
 - **Click-to-call**: an "Anruf starten" (Start call) button on Customer and Contact. Defaults to a `tel:` link (opens the local Webex app, no admin rights required), with an optional server-side mode using the Webex Call Control API.
 - Every call/sync operation is logged for traceability (raw payloads, error log).
@@ -66,8 +68,7 @@ The full OAuth login runs directly through ERPNext — no manual copying of code
 - **Brand-based caller ID** (DocType *Webex Brand Line*, `customer_brand_fieldname` field in Webex Settings): automatically sets the outgoing caller ID matching the customer's brand before dialing, via Webex's "Configure Caller ID Settings for a Person" API. The JSON schema (`selected`/`customNumber`) is derived from Webex's documentation but not verified against every tenant — use the **"Anrufer-ID-Einstellungen anzeigen (Debug)"** button in Webex Settings to inspect the actual format and adjust `webex_client.py` (`set_caller_id`) if needed. Currently only works for the one OAuth-connected user (see point above).
 
 ## Roadmap
-- [ ] Per-user OAuth so click-to-call and call history are correctly attributed to each agent.
-- [ ] Real-time screen-pop / desk notification on incoming calls.
+- [ ] Per-user OAuth so click-to-call, call history, and screen-pop are correctly attributed to each individual agent (currently only works for the one connected user).
 - [ ] ERPNext workspace with reporting (calls per customer/agent, response times).
 
 ## License

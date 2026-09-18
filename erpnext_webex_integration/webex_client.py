@@ -153,6 +153,12 @@ class WebexClient:
 		items = result.get("items") if isinstance(result, dict) else None
 		return items[0].get("id") if items else None
 
+	def get_person(self, person_id):
+		"""Umkehrung von find_person_id_by_email() - liefert u.a. die E-Mail-Adresse
+		zu einer Webex-Person-ID (z.B. dem "actorId" aus einem Webhook-Payload),
+		um das Screen-Pop-Ereignis dem richtigen ERPNext-Benutzer zuzustellen."""
+		return self._request("GET", f"{self.api_base_url}/people/{person_id}")
+
 	def get_caller_id_settings(self, person_id):
 		return self._request("GET", f"{self.api_base_url}/people/{person_id}/features/callerId")
 

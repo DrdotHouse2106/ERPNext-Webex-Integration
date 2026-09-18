@@ -10,6 +10,8 @@ Eine [Frappe](https://frappeframework.com/)/[ERPNext](https://erpnext.com/)-App,
   - Über **Webhooks** (Echtzeit, Ressource `telephony_calls`) und/oder
   - über den regelmäßigen Abruf des **detaillierten Anrufprotokolls (CDR)** von Webex.
   - Beide Quellen werden über `callSessionId` (Webhook) bzw. `Correlation ID` (CDR) demselben echten Anruf zugeordnet und in einem Datensatz zusammengeführt – auch wenn z. B. mehrere Kollegen einer Hunt Group gleichzeitig geklingelt werden, entsteht kein doppelter Eintrag.
+  - Wird eine Rufnummer erst **nachträglich** an einem Kunden/Kontakt hinterlegt, werden dazu passende, bereits bestehende (aber bis dahin nicht zuordenbare) Anrufprotokoll-Einträge automatisch nachträglich zugeordnet.
+- **Screen-Pop**: Bei einem eingehenden Anruf erscheint sofort (noch während es klingelt) ein Desk-Hinweis mit Rufnummer, zugeordnetem Kunden/Kontakt und einem direkten Link zum Datensatz. Die Zustellung erfolgt anhand der Webex-Person, bei der der Anruf ankommt (`actorId`), und funktioniert daher automatisch auch für weitere Mitarbeiter, sobald diese ihre eigene Webex-Verbindung freigeben (siehe Roadmap).
 - **Telefonbuch-Synchronisation**: Rufnummern von Kunden und Kontakten werden ins **Webex-Organisationstelefonbuch** übertragen – inklusive Kundennummer im Anzeigenamen (z. B. `Mustermann GmbH (CUST-00042)`), damit bei eingehenden Anrufen sofort erkennbar ist, wer anruft.
 - **Click-to-Call**: Button "Anruf starten" auf Kunde und Kontakt. Standardmäßig per `tel:`-Link (öffnet die lokale Webex-App, funktioniert ohne Admin-Rechte), optional serverseitig über die Webex Call-Control-API.
 - Jeder Anruf-/Sync-Vorgang wird nachvollziehbar protokolliert (Rohdaten, Fehlerprotokoll).
@@ -73,8 +75,7 @@ Der komplette OAuth-Login läuft direkt über ERPNext – kein manuelles Kopiere
 - Wird ein Kunde/Kontakt mit hinterlegtem `webex_contact_id` **gelöscht oder mit einem anderen zusammengeführt** (Merge), wird der zugehörige Webex-Telefonbuch-Eintrag automatisch entfernt (`on_trash`-Hook), damit keine verwaisten Einträge im organisationsweiten Telefonbuch zurückbleiben.
 
 ## Roadmap
-- [ ] Pro-Benutzer-OAuth-Anbindung, damit Click-to-Call und Anrufprotokoll korrekt dem jeweiligen Mitarbeiter zugeordnet werden.
-- [ ] Screen-Pop / Desk-Benachrichtigung bei eingehendem Anruf in Echtzeit.
+- [ ] Pro-Benutzer-OAuth-Anbindung, damit Click-to-Call, Anrufprotokoll und Screen-Pop korrekt jedem einzelnen Mitarbeiter zugeordnet werden (aktuell nur für den einen verbundenen Benutzer).
 - [ ] ERPNext-Workspace mit Auswertungen (Anrufe pro Kunde/Mitarbeiter, Reaktionszeiten).
 
 ## Lizenz

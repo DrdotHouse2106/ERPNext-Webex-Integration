@@ -449,12 +449,20 @@ def _build_organization_contact_payload(display_name, phone_numbers, first_name=
 # ----------------------------------------------------------------------
 def on_customer_update(doc, method=None):
 	settings = frappe.get_cached_doc("Webex Settings")
-	if not settings.enabled or not settings.auto_sync_phonebook or not settings.sync_customers:
+	if not settings.enabled:
 		return
+	if settings.auto_sync_phonebook and settings.sync_customers:
+		frappe.enqueue(
+			"erpnext_webex_integration.tasks.sync_single_customer",
+			queue="short",
+			job_id=f"webex-sync-customer-{doc.name}",
+			deduplicate=True,
+			customer_name=doc.name,
+		)
 	frappe.enqueue(
-		"erpnext_webex_integration.tasks.sync_single_customer",
+		"erpnext_webex_integration.tasks.rematch_call_logs_for_customer",
 		queue="short",
-		job_id=f"webex-sync-customer-{doc.name}",
+		job_id=f"webex-rematch-customer-{doc.name}",
 		deduplicate=True,
 		customer_name=doc.name,
 	)
@@ -462,15 +470,78 @@ def on_customer_update(doc, method=None):
 
 def on_contact_update(doc, method=None):
 	settings = frappe.get_cached_doc("Webex Settings")
-	if not settings.enabled or not settings.auto_sync_phonebook or not settings.sync_contacts:
+	if not settings.enabled:
 		return
+	if settings.auto_sync_phonebook and settings.sync_contacts:
+		frappe.enqueue(
+			"erpnext_webex_integration.tasks.sync_single_contact",
+			queue="short",
+			job_id=f"webex-sync-contact-{doc.name}",
+			deduplicate=True,
+			contact_name=doc.name,
+		)
 	frappe.enqueue(
-		"erpnext_webex_integration.tasks.sync_single_contact",
+		"erpnext_webex_integration.tasks.rematch_call_logs_for_contact",
 		queue="short",
-		job_id=f"webex-sync-contact-{doc.name}",
+		job_id=f"webex-rematch-contact-{doc.name}",
 		deduplicate=True,
 		contact_name=doc.name,
 	)
+
+
+# ----------------------------------------------------------------------
+# Nachtraegliche Zuordnung bestehender Anrufprotokoll-Einträge
+# ----------------------------------------------------------------------
+def rematch_call_logs_for_customer(customer_name):
+	"""Ordnet bestehende, noch nicht zugeordnete Webex Call Logs nachträglich
+	diesem Kunden zu, falls eine seiner Rufnummern (oder die eines verknüpften
+	Kontakts) zu einem bereits gespeicherten, aber unzugeordneten Anruf passt -
+	z.B. wenn die Nummer erst nachträglich am Kunden hinterlegt wurde."""
+	for number, _number_type in utils.get_all_phones("Customer", customer_name):
+		_rematch_unlinked_call_logs(number, customer=customer_name)
+
+
+def rematch_call_logs_for_contact(contact_name):
+	"""Analog zu rematch_call_logs_for_customer(), für Contact-Datensätze."""
+	customer_name = frappe.db.get_value(
+		"Dynamic Link",
+		{"parenttype": "Contact", "parent": contact_name, "link_doctype": "Customer"},
+		"link_name",
+	)
+	for number, _number_type in utils.get_all_phones("Contact", contact_name):
+		_rematch_unlinked_call_logs(number, contact=contact_name, customer=customer_name)
+
+
+def _rematch_unlinked_call_logs(number, customer=None, contact=None):
+	digits = utils.last_significant_digits(number)
+	if not digits or len(digits) < 5:
+		return
+
+	rows = frappe.db.sql(
+		"""
+		select name from `tabWebex Call Log`
+		where (customer is null or customer = '')
+		  and (contact is null or contact = '')
+		  and (lead is null or lead = '')
+		  and (from_number like %(pattern)s or to_number like %(pattern)s)
+		""",
+		{"pattern": f"%{digits}"},
+		as_dict=True,
+	)
+	if not rows:
+		return
+
+	updates = {}
+	if customer:
+		updates["customer"] = customer
+	if contact:
+		updates["contact"] = contact
+	if not updates:
+		return
+
+	for row in rows:
+		frappe.db.set_value("Webex Call Log", row.name, updates)
+	frappe.db.commit()
 
 
 # ----------------------------------------------------------------------

@@ -102,6 +102,8 @@ def _handle_call_webhook_payload(payload):
 	is_new = not existing_name
 	call_log = frappe.get_doc("Webex Call Log", existing_name) if existing_name else frappe.new_doc("Webex Call Log")
 
+	previous_status = call_log.status if not is_new else None
+
 	call_log.call_id = call_id
 	call_log.call_session_id = call_session_id or call_log.call_session_id
 	if is_new:
@@ -156,6 +158,76 @@ def _handle_call_webhook_payload(payload):
 
 	call_log.save(ignore_permissions=True)
 	frappe.db.commit()  # notwendig, da Webhook-Aufrufe ausserhalb einer Request-Transaktion laufen
+
+	# Screen-Pop: nur beim Uebergang zu "Klingelt" ausloesen (nicht bei jedem
+	# weiteren Ereignis desselben Anrufs), damit nicht mehrfach benachrichtigt wird.
+	if status == "Klingelt" and previous_status != "Klingelt":
+		try:
+			_notify_incoming_call(payload, call_log)
+		except Exception:
+			frappe.log_error(title="Webex Screen-Pop fehlgeschlagen", message=frappe.get_traceback())
+
+
+def _notify_incoming_call(payload, call_log):
+	"""Benachrichtigt per Frappe-Realtime (Desk-Popup) den Benutzer, dem der Anruf
+	zugestellt wird - ermittelt ueber die "actorId" im Webhook-Payload (die Webex-
+	Person, bei der der Anruf ankommt), umgerechnet auf den passenden ERPNext-
+	Benutzer per E-Mail-Abgleich. Faellt beim ersten mit dieser App verbundenen
+	Benutzer (aktuell z.B. Marcel) natuerlich zusammen; sobald weitere Kollegen
+	ihre eigene Webex-Verbindung freigeben (Roadmap), greift dieselbe Logik ohne
+	Codeaenderung auch fuer sie, da actorId je Anruf ohnehin die richtige Person nennt."""
+	actor_id = payload.get("actorId")
+	if not actor_id:
+		return
+
+	frappe_user = _get_frappe_user_for_webex_person(actor_id)
+	if not frappe_user:
+		return
+
+	if call_log.customer:
+		customer_name = frappe.db.get_value("Customer", call_log.customer, "customer_name") or call_log.customer
+		subtitle = f"Kunde: {customer_name} ({call_log.customer})"
+	elif call_log.contact:
+		subtitle = f"Kontakt: {call_log.contact}"
+	elif call_log.lead:
+		subtitle = f"Lead: {call_log.lead}"
+	else:
+		subtitle = "Unbekannter Anrufer"
+
+	frappe.publish_realtime(
+		"webex_incoming_call",
+		{
+			"from_number": call_log.from_number,
+			"subtitle": subtitle,
+			"customer": call_log.customer,
+			"contact": call_log.contact,
+			"lead": call_log.lead,
+			"call_log": call_log.name,
+		},
+		user=frappe_user,
+	)
+
+
+def _get_frappe_user_for_webex_person(actor_id):
+	"""Umkehrung von _get_cached_person_id(): ermittelt zu einer Webex-Person-ID
+	die E-Mail-Adresse und darueber den passenden ERPNext-Benutzer."""
+	cache_key = f"webex_person_email:{actor_id}"
+	email = frappe.cache().get_value(cache_key)
+	if not email:
+		settings = frappe.get_single("Webex Settings")
+		try:
+			client = WebexClient(settings=settings)
+			person = client.get_person(actor_id)
+		except WebexAPIError:
+			return None
+		emails = person.get("emails") or []
+		email = emails[0] if emails else None
+		if email:
+			frappe.cache().set_value(cache_key, email, expires_in_sec=3600)
+
+	if not email:
+		return None
+	return frappe.db.get_value("User", {"email": email})
 
 
 def _enrich_from_call_details(call_log, call_id):
