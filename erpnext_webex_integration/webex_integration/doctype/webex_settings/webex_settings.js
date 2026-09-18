@@ -62,6 +62,20 @@ frappe.ui.form.on("Webex Settings", {
 			});
 		});
 
+		frm.add_custom_button(__("Anrufer-ID-Einstellungen anzeigen (Debug)"), () => {
+			frappe.call({
+				method: "erpnext_webex_integration.api.debug_caller_id_settings",
+				freeze: true,
+				callback: (r) => {
+					frappe.msgprint({
+						title: __("Anrufer-ID-Einstellungen"),
+						message: `<pre>${JSON.stringify(r.message, null, 2)}</pre>`,
+						indicator: "blue",
+					});
+				},
+			});
+		});
+
 		frm.add_custom_button(__("Anrufprotokoll jetzt abrufen"), () => {
 			frappe.call({
 				method: "erpnext_webex_integration.api.pull_call_history_now",

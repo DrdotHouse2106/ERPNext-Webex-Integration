@@ -16,7 +16,8 @@ WEBEX_AUTHORIZE_URL = "https://webexapis.com/v1/authorize"
 WEBEX_TOKEN_URL = "https://webexapis.com/v1/access_token"
 OAUTH_SCOPES = (
 	"spark:calls_write spark:calls_read spark-admin:calling_cdr_read "
-	"Identity:contact spark:webhooks_write spark:webhooks_read"
+	"Identity:contact spark:webhooks_write spark:webhooks_read "
+	"spark-admin:people_read spark-admin:people_write"
 )
 
 EVENT_TYPE_TO_STATUS = {
@@ -158,6 +159,7 @@ def click_to_call(doctype, docname):
 	if settings.click_to_call_mode == "Webex Call-Control-API":
 		try:
 			client = WebexClient(settings=settings)
+			_apply_brand_caller_id(client, settings, doctype, docname)
 			client.dial(normalized)
 			return {"mode": "api"}
 		except WebexAPIError as exc:
@@ -165,6 +167,57 @@ def click_to_call(doctype, docname):
 			# Fallback: lokale Anwendung per tel:-Link starten lassen.
 
 	return {"mode": "tel", "tel_link": f"tel:{normalized}"}
+
+
+def _apply_brand_caller_id(client, settings, doctype, docname):
+	"""Setzt vor dem Anruf die zur Kunden-Marke passende Anrufer-ID, falls konfiguriert.
+
+	Schlaegt dies fehl (z.B. weil keine Zuordnung existiert oder die Person nicht
+	aufgeloest werden kann), wird der Anruf trotzdem ganz normal gestartet - nur
+	eben mit der aktuell in Webex eingestellten Standard-Anrufer-ID."""
+	brand_fieldname = settings.customer_brand_fieldname
+	if not brand_fieldname:
+		return
+
+	customer_name = docname if doctype == "Customer" else _get_linked_customer(docname)
+	if not customer_name:
+		return
+
+	brand = frappe.db.get_value("Customer", customer_name, brand_fieldname)
+	if not brand:
+		return
+
+	phone_number = frappe.db.get_value("Webex Brand Line", {"brand": brand}, "phone_number")
+	if not phone_number:
+		return
+
+	try:
+		person_id = _get_cached_person_id(client, settings, frappe.session.user)
+		if person_id:
+			client.set_caller_id(person_id, phone_number)
+	except WebexAPIError as exc:
+		frappe.log_error(title="Webex Anrufer-ID setzen fehlgeschlagen", message=str(exc))
+
+
+def _get_linked_customer(contact_name):
+	return frappe.db.get_value(
+		"Dynamic Link",
+		{"parenttype": "Contact", "parent": contact_name, "link_doctype": "Customer"},
+		"link_name",
+	)
+
+
+def _get_cached_person_id(client, settings, frappe_user):
+	cache_key = f"webex_person_id:{frappe_user}"
+	person_id = frappe.cache().get_value(cache_key)
+	if person_id:
+		return person_id
+
+	user_email = frappe.db.get_value("User", frappe_user, "email") or frappe_user
+	person_id = client.find_person_id_by_email(user_email, org_id=settings.org_id)
+	if person_id:
+		frappe.cache().set_value(cache_key, person_id, expires_in_sec=3600)
+	return person_id
 
 
 def _log_manual_call_start(doctype, docname, to_number):
@@ -208,6 +261,26 @@ def pull_call_history_now():
 
 	pull_call_history()
 	return {"status": "ok"}
+
+
+@frappe.whitelist()
+def debug_caller_id_settings():
+	"""Zeigt die rohen Anrufer-ID-Einstellungen des aktuell verbundenen Webex-Benutzers an.
+	Dient dazu, das tatsaechliche JSON-Schema zu verifizieren, falls set_caller_id()
+	beim Click-to-Call mit "falsche Felder" fehlschlagen sollte."""
+	frappe.only_for("System Manager")
+	settings = frappe.get_single("Webex Settings")
+	client = WebexClient(settings=settings)
+	person_id = _get_cached_person_id(client, settings, frappe.session.user)
+	if not person_id:
+		frappe.throw(
+			"Konnte keine Webex-Person-ID zu deiner E-Mail-Adresse finden. "
+			"Stimmt deine ERPNext-Benutzer-E-Mail mit deiner Webex-E-Mail überein?"
+		)
+	try:
+		return client.get_caller_id_settings(person_id)
+	except WebexAPIError as exc:
+		frappe.throw(str(exc))
 
 
 # ----------------------------------------------------------------------

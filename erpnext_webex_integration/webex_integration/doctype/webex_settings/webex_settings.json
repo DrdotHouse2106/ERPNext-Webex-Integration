@@ -37,7 +37,8 @@
   "last_phonebook_sync",
   "sb_click_to_call",
   "enable_click_to_call",
-  "click_to_call_mode"
+  "click_to_call_mode",
+  "customer_brand_fieldname"
  ],
  "fields": [
   {
@@ -248,6 +249,13 @@
    "fieldtype": "Select",
    "label": "Modus",
    "options": "tel:-Link (kein Admin-Zugang nötig)\nWebex Call-Control-API"
+  },
+  {
+   "default": "vi_versandabsender",
+   "description": "Technischer Fieldname des Marke-Felds am Customer-Doctype (stammt aus einer anderen App). Wird genutzt, um beim Click-to-Call automatisch die passende Anrufer-ID aus \"Webex Brand Line\" zu setzen. Leer lassen, um diese Funktion zu deaktivieren.",
+   "fieldname": "customer_brand_fieldname",
+   "fieldtype": "Data",
+   "label": "Marke-Feld am Kunden (Fieldname)"
   }
  ],
  "issingle": 1,

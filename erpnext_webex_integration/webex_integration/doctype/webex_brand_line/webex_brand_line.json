@@ -1,0 +1,60 @@
+{
+ "actions": [],
+ "autoname": "field:brand",
+ "creation": "2026-09-18 00:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "brand",
+  "phone_number",
+  "description"
+ ],
+ "fields": [
+  {
+   "description": "Muss exakt dem Wert im Marke-Feld des Kunden entsprechen (siehe Webex Settings → Marke-Feld am Kunden).",
+   "fieldname": "brand",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Marke",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "description": "Diese Rufnummer wird beim Anruf-starten-Button als Anrufer-ID gesetzt (muss eine dem Benutzer in Webex zugewiesene Nummer sein).",
+   "fieldname": "phone_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Anrufer-ID / Rufnummer",
+   "reqd": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Notiz"
+  }
+ ],
+ "links": [],
+ "modified": "2026-09-18 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Webex Integration",
+ "name": "Webex Brand Line",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "title_field": "brand",
+ "track_changes": 1
+}

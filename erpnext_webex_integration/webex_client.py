@@ -93,6 +93,30 @@ class WebexClient:
 		return result.get("items", [])
 
 	# ------------------------------------------------------------------
+	# Personen-Lookup und Anrufer-ID (fuer Marken-abhaengige Absendernummer)
+	# ------------------------------------------------------------------
+	def find_person_id_by_email(self, email, org_id=None):
+		params = {"email": email}
+		if org_id:
+			params["orgId"] = org_id
+		result = self._request("GET", f"{self.api_base_url}/people", params=params)
+		items = result.get("items") if isinstance(result, dict) else None
+		return items[0].get("id") if items else None
+
+	def get_caller_id_settings(self, person_id):
+		return self._request("GET", f"{self.api_base_url}/people/{person_id}/features/callerId")
+
+	def set_caller_id(self, person_id, phone_number):
+		"""Setzt die Anrufer-ID fuer den naechsten ausgehenden Anruf dieser Person.
+
+		Das Schema (selected/customNumber) ist aus der Webex-API-Dokumentationsstruktur
+		abgeleitet, aber nicht live gegen jeden Tenant verifiziert. Bei Fehlern zuerst
+		get_caller_id_settings() aufrufen und das tatsaechliche Antwortformat mit diesem
+        Payload vergleichen."""
+		payload = {"selected": "CUSTOM", "customNumber": phone_number}
+		return self._request("PUT", f"{self.api_base_url}/people/{person_id}/features/callerId", json=payload)
+
+	# ------------------------------------------------------------------
 	# Organisations-Telefonbuch (Organization Contacts)
 	# ------------------------------------------------------------------
 	def create_organization_contact(self, payload):

@@ -62,6 +62,7 @@ The full OAuth login runs directly through ERPNext — no manual copying of code
 - Phone-number-to-customer matching compares the last digits of a number (tolerant to formatting differences) rather than a strict E.164 match, so duplicate numbers across customers can cause mismatches.
 - The JSON schema of Webex's *Organization Contacts* API may differ slightly by tenant/API version. After initial setup, verify via **"Test connection"** / a test entry that fields (`displayName`, `phoneNumbers`, …) are mapped correctly, and adjust `tasks.py` (`_build_organization_contact_payload`) if needed.
 - Click-to-call via the Call Control API currently uses a shared service token, so the call is technically placed from the token owner's devices, not individually per agent. True per-agent click-to-call requires adding per-user OAuth (see Roadmap).
+- **Brand-based caller ID** (DocType *Webex Brand Line*, `customer_brand_fieldname` field in Webex Settings): automatically sets the outgoing caller ID matching the customer's brand before dialing, via Webex's "Configure Caller ID Settings for a Person" API. The JSON schema (`selected`/`customNumber`) is derived from Webex's documentation but not verified against every tenant — use the **"Anrufer-ID-Einstellungen anzeigen (Debug)"** button in Webex Settings to inspect the actual format and adjust `webex_client.py` (`set_caller_id`) if needed. Currently only works for the one OAuth-connected user (see point above).
 
 ## Roadmap
 - [ ] Per-user OAuth so click-to-call and call history are correctly attributed to each agent.
