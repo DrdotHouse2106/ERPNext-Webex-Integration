@@ -1,6 +1,7 @@
 """Geplante Aufgaben: Anrufprotokoll abrufen, Telefonbuch synchronisieren."""
 
 import json
+from datetime import datetime, timedelta, timezone
 
 import frappe
 from frappe.utils import add_to_date, get_datetime, now_datetime
@@ -79,13 +80,17 @@ def pull_call_history(force=False):
 		return {"status": "skipped", "reason": "Automatischer Abruf ist deaktiviert."}
 
 	lookback_minutes = settings.call_history_lookback_minutes or 60
-	# Webex verlangt "aelter als 5 Minuten" (strikt), nicht "genau 5 Minuten" - mit
-	# etwas Puffer (10 statt 5 Minuten) bleibt das auch bei kleinen Uhr-Abweichungen
-	# zwischen den Servern sicher innerhalb des erlaubten Fensters.
-	end_time = add_to_date(now_datetime(), minutes=-10)
+	# Wichtig: hier bewusst NICHT frappe.utils.now_datetime() verwenden - das liefert
+	# die Zeit in der Standort-Zeitzone (z.B. Europe/Berlin), waehrend Webex echtes
+	# UTC erwartet. _to_webex_timestamp() haengt ein "Z" (UTC) an, ohne umzurechnen -
+	# mit lokaler Zeit waere der Zeitpunkt fuer Webex je nach Zeitzone 1-2h in der
+	# "Zukunft" gewesen, was zum Fehler "End time is not older than 5 minutes" fuehrte.
+	# Puffer von 10 statt 5 Minuten faengt zusaetzlich kleine Uhr-Abweichungen ab.
+	now_utc = datetime.now(timezone.utc).replace(tzinfo=None)
+	end_time = now_utc - timedelta(minutes=10)
 	start_time = get_datetime(settings.last_call_history_sync) if settings.last_call_history_sync else None
 	if force or not start_time or start_time >= end_time:
-		start_time = add_to_date(end_time, minutes=-lookback_minutes)
+		start_time = end_time - timedelta(minutes=lookback_minutes)
 
 	client = WebexClient(settings=settings)
 	try:
