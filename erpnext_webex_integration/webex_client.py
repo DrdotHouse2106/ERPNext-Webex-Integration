@@ -11,8 +11,9 @@ Verwendete Endpunkte (Stand: developer.webex.com, September 2026):
 
 Wichtig: cdr_feed liegt auf einem eigenen Host (analytics.webexapis.com bzw. regional
 z.B. analytics-calling-eu.webexapis.com), nicht auf webexapis.com - daher der eigene
-Einstellungs-Wert "cdr_api_base_url". Organization Contacts liegt zwar auf demselben
-Host wie die uebrige API, aber unter "/contacts/..." statt "/v1/...".
+Einstellungs-Wert "cdr_api_base_url". Organization Contacts liegt ganz normal unter
+{api_base}/v1, nur mit dem Pfad-Segment "/contacts/organizations/{orgId}/..." davor
+(per "Try It" auf developer.webex.com verifiziert).
 """
 
 import re
@@ -33,10 +34,9 @@ class WebexClient:
 		self.settings = settings or frappe.get_single("Webex Settings")
 		self.api_base_url = (self.settings.webex_api_base_url or "https://webexapis.com/v1").rstrip("/")
 		self.cdr_base_url = (self.settings.cdr_api_base_url or "https://analytics.webexapis.com/v1").rstrip("/")
-		# Organization Contacts liegt unter einem eigenen Pfad-Praefix "/contacts/..."
-		# auf demselben Host wie api_base_url, nicht unter "/v1/..." - daher hier aus
-		# api_base_url abgeleitet, indem das "/v1"-Suffix entfernt wird.
-		self.contacts_base_url = self.api_base_url.rsplit("/v1", 1)[0] if self.api_base_url.endswith("/v1") else self.api_base_url
+		# Organization Contacts liegt unter {api_base_url}/contacts/organizations/{orgId}/...
+		# - also ganz normal unter "/v1", nur mit dem Pfad-Segment "/contacts/..." davor.
+		self.contacts_base_url = self.api_base_url
 		self.access_token = access_token_override or self.settings.get_password(
 			"access_token", raise_exception=False
 		)
