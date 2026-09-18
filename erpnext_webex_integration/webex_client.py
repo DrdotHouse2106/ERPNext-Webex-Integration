@@ -5,11 +5,14 @@ Verwendete Endpunkte (Stand: developer.webex.com, September 2026):
 - Dial (Click-to-Call):        POST {api_base}/telephony/calls/dial          (Scope: spark:calls_write)
 - Anrufdetails:                GET  {api_base}/telephony/calls/{callId}      (Scope: spark:calls_read)
 - Detailliertes Anrufprotokoll: GET  {cdr_base}/cdr_feed                      (Scope: spark-admin:calling_cdr_read)
-- Organisations-Telefonbuch:    {api_base}/organization/contacts             (Scope: Identity:contact oder Identity:SCIM)
+- Organisations-Telefonbuch:    GET  {contacts_base}/contacts/organizations/{orgId}/contacts/search
+                                (Scope: Identity:contact oder Identity:SCIM; orgId ist Pfad-, kein Query-Parameter)
 - Webhooks:                     {api_base}/webhooks                          (Scope: spark-admin:webhooks_write)
 
-Wichtig: cdr_feed liegt auf einem eigenen Host (analytics.webexapis.com), nicht auf
-webexapis.com - daher der eigene Einstellungs-Wert "cdr_api_base_url".
+Wichtig: cdr_feed liegt auf einem eigenen Host (analytics.webexapis.com bzw. regional
+z.B. analytics-calling-eu.webexapis.com), nicht auf webexapis.com - daher der eigene
+Einstellungs-Wert "cdr_api_base_url". Organization Contacts liegt zwar auf demselben
+Host wie die uebrige API, aber unter "/contacts/..." statt "/v1/...".
 """
 
 import re
@@ -30,6 +33,10 @@ class WebexClient:
 		self.settings = settings or frappe.get_single("Webex Settings")
 		self.api_base_url = (self.settings.webex_api_base_url or "https://webexapis.com/v1").rstrip("/")
 		self.cdr_base_url = (self.settings.cdr_api_base_url or "https://analytics.webexapis.com/v1").rstrip("/")
+		# Organization Contacts liegt unter einem eigenen Pfad-Praefix "/contacts/..."
+		# auf demselben Host wie api_base_url, nicht unter "/v1/..." - daher hier aus
+		# api_base_url abgeleitet, indem das "/v1"-Suffix entfernt wird.
+		self.contacts_base_url = self.api_base_url.rsplit("/v1", 1)[0] if self.api_base_url.endswith("/v1") else self.api_base_url
 		self.access_token = access_token_override or self.settings.get_password(
 			"access_token", raise_exception=False
 		)
@@ -162,25 +169,51 @@ class WebexClient:
 	# ------------------------------------------------------------------
 	# Organisations-Telefonbuch (Organization Contacts)
 	# ------------------------------------------------------------------
-	def create_organization_contact(self, payload):
-		return self._request("POST", f"{self.api_base_url}/organization/contacts", json=payload)
+	# Bestaetigter Endpunkt (developer.webex.com/admin/docs/api/v1/organization-contacts):
+	#   GET https://webexapis.com/contacts/organizations/{orgId}/contacts/search
+	# orgId ist Pfad-Parameter (nicht Query!), Host/Praefix "/contacts/..." weicht
+	# vom normalen "/v1/..." der uebrigen API ab. Create/Update/Delete folgen
+	# vermutlich demselben Pfad-Schema, sind aber (noch) nicht gegen die echte
+	# API verifiziert - bei Fehlern zuerst hier pruefen.
+	def _require_org_id(self, org_id):
+		if not org_id:
+			frappe.throw(
+				"Für das Organisations-Telefonbuch muss die Webex Organisations-ID in "
+				"den Webex-Einstellungen hinterlegt sein."
+			)
+		return org_id
 
-	def update_organization_contact(self, contact_id, payload):
-		return self._request(
-			"PUT", f"{self.api_base_url}/organization/contacts/{contact_id}", json=payload
+	def list_organization_contacts(self, org_id=None, keyword=None, params=None):
+		org_id = self._require_org_id(org_id or self.settings.org_id)
+		query = dict(params or {})
+		if keyword is not None:
+			query["keyword"] = keyword
+		result = self._request(
+			"GET", f"{self.contacts_base_url}/contacts/organizations/{org_id}/contacts/search", params=query
 		)
-
-	def delete_organization_contact(self, contact_id):
-		return self._request("DELETE", f"{self.api_base_url}/organization/contacts/{contact_id}")
-
-	def list_organization_contacts(self, org_id=None, params=None):
-		params = dict(params or {})
-		if org_id:
-			params["orgId"] = org_id
-		result = self._request("GET", f"{self.api_base_url}/organization/contacts", params=params)
 		if isinstance(result, list):
 			return result
-		return result.get("Contacts") or result.get("items") or []
+		return result.get("result") or result.get("items") or []
+
+	def create_organization_contact(self, payload, org_id=None):
+		org_id = self._require_org_id(org_id or self.settings.org_id)
+		return self._request(
+			"POST", f"{self.contacts_base_url}/contacts/organizations/{org_id}/contacts", json=payload
+		)
+
+	def update_organization_contact(self, contact_id, payload, org_id=None):
+		org_id = self._require_org_id(org_id or self.settings.org_id)
+		return self._request(
+			"PUT",
+			f"{self.contacts_base_url}/contacts/organizations/{org_id}/contacts/{contact_id}",
+			json=payload,
+		)
+
+	def delete_organization_contact(self, contact_id, org_id=None):
+		org_id = self._require_org_id(org_id or self.settings.org_id)
+		return self._request(
+			"DELETE", f"{self.contacts_base_url}/contacts/organizations/{org_id}/contacts/{contact_id}"
+		)
 
 	# ------------------------------------------------------------------
 	# Webhooks
