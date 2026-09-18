@@ -15,6 +15,7 @@ FREQUENCY_TO_TIMEDELTA = {
 }
 
 WEBEX_TOKEN_URL = "https://webexapis.com/v1/access_token"
+MAX_CDR_WINDOW_MINUTES = 720  # Webex Detailed Call History: max. 12h Zeitfenster pro Anfrage
 
 
 # ----------------------------------------------------------------------
@@ -92,25 +93,34 @@ def pull_call_history(force=False):
 	if force or not start_time or start_time >= end_time:
 		start_time = end_time - timedelta(minutes=lookback_minutes)
 
+	# Webex erlaubt pro Anfrage nur ein Zeitfenster von max. 12 Stunden - bei einem
+	# groesseren Abrufzeitraum (z.B. fuer einen einmaligen Rueckstands-Abruf) wird
+	# daher in mehreren 12h-Haeppchen nachgeladen, statt in einer einzigen Anfrage
+	# (die Webex sonst mit "Time duration is more than 12 hours" ablehnt).
 	client = WebexClient(settings=settings)
+	total_fetched = 0
+	window_start = start_time
 	try:
-		records = client.get_call_history(
-			_to_webex_timestamp(start_time), _to_webex_timestamp(end_time)
-		)
+		while window_start < end_time:
+			window_end = min(window_start + timedelta(minutes=MAX_CDR_WINDOW_MINUTES), end_time)
+			records = client.get_call_history(
+				_to_webex_timestamp(window_start), _to_webex_timestamp(window_end)
+			)
+			for record in records:
+				_create_call_log_from_cdr(record, settings)
+			total_fetched += len(records)
+			window_start = window_end
 	except WebexAPIError as exc:
 		frappe.log_error(title="Webex Anrufprotokoll-Abruf fehlgeschlagen", message=str(exc))
 		if force:
 			raise
 		return {"status": "error", "message": str(exc)}
 
-	for record in records:
-		_create_call_log_from_cdr(record, settings)
-
 	frappe.db.set_single_value("Webex Settings", "last_call_history_sync", end_time)
 	frappe.db.commit()
 	return {
 		"status": "ok",
-		"fetched": len(records),
+		"fetched": total_fetched,
 		"from": _to_webex_timestamp(start_time),
 		"to": _to_webex_timestamp(end_time),
 	}
