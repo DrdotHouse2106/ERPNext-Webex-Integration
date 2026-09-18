@@ -240,20 +240,31 @@ def _find_recent_call_log_by_number_and_time(number, start_time, tolerance_minut
 # Telefonbuch-Synchronisation
 # ----------------------------------------------------------------------
 def sync_phonebook(force=False):
+	"""Gibt bei force=True immer ein Ergebnis-Dict zurück, damit ein manueller
+	Klick auf "Jetzt synchronisieren" das tatsächliche Ergebnis zeigt statt nur
+	pauschal "gestartet" zu melden."""
 	settings = frappe.get_single("Webex Settings")
-	if not settings.enabled or not settings.auto_sync_phonebook:
-		return
-
+	if not settings.enabled:
+		return {"status": "skipped", "reason": "Integration ist nicht aktiviert."}
+	if not force and not settings.auto_sync_phonebook:
+		# Der automatische Scheduler-Job respektiert den Schalter "automatisch
+		# synchronisieren"; ein manueller Klick (force=True) soll aber unabhängig
+		# davon immer laufen.
+		return {"status": "skipped", "reason": "Automatische Telefonbuch-Synchronisation ist deaktiviert."}
 	if not force and not _phonebook_sync_due(settings):
-		return
+		return {"status": "skipped", "reason": "Laut Intervall noch nicht fällig."}
 
 	client = WebexClient(settings=settings)
+	customers_ok, customers_failed = 0, []
+	contacts_ok, contacts_failed = 0, []
 
 	if settings.sync_customers:
 		for customer_name in _customers_with_phone():
 			try:
 				sync_single_customer(customer_name, client=client, settings=settings)
+				customers_ok += 1
 			except WebexAPIError as exc:
+				customers_failed.append(customer_name)
 				frappe.log_error(
 					title="Webex Telefonbuch-Sync (Kunde) fehlgeschlagen",
 					message=f"{customer_name}: {exc}",
@@ -263,7 +274,9 @@ def sync_phonebook(force=False):
 		for contact_name in _contacts_with_phone():
 			try:
 				sync_single_contact(contact_name, client=client, settings=settings)
+				contacts_ok += 1
 			except WebexAPIError as exc:
+				contacts_failed.append(contact_name)
 				frappe.log_error(
 					title="Webex Telefonbuch-Sync (Kontakt) fehlgeschlagen",
 					message=f"{contact_name}: {exc}",
@@ -271,6 +284,13 @@ def sync_phonebook(force=False):
 
 	frappe.db.set_single_value("Webex Settings", "last_phonebook_sync", now_datetime())
 	frappe.db.commit()
+	return {
+		"status": "ok",
+		"customers_ok": customers_ok,
+		"customers_failed": customers_failed,
+		"contacts_ok": contacts_ok,
+		"contacts_failed": contacts_failed,
+	}
 
 
 def _phonebook_sync_due(settings):

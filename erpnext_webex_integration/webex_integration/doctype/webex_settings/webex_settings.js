@@ -119,8 +119,33 @@ frappe.ui.form.on("Webex Settings", {
 			frappe.call({
 				method: "erpnext_webex_integration.api.sync_phonebook_now",
 				freeze: true,
-				callback: () => {
-					frappe.show_alert({ message: __("Synchronisation gestartet."), indicator: "green" });
+				callback: (r) => {
+					const res = r.message || {};
+					if (res.status === "skipped") {
+						frappe.msgprint(__("Übersprungen: {0}", [res.reason]));
+						return;
+					}
+					frappe.msgprint({
+						title: __("Synchronisation abgeschlossen"),
+						message: __(
+							"Kunden erfolgreich: {0}{1}<br>Kontakte erfolgreich: {2}{3}",
+							[
+								res.customers_ok,
+								res.customers_failed && res.customers_failed.length
+									? ` (fehlgeschlagen: ${res.customers_failed.join(", ")})`
+									: "",
+								res.contacts_ok,
+								res.contacts_failed && res.contacts_failed.length
+									? ` (fehlgeschlagen: ${res.contacts_failed.join(", ")})`
+									: "",
+							]
+						),
+						indicator:
+							(res.customers_failed && res.customers_failed.length) ||
+							(res.contacts_failed && res.contacts_failed.length)
+								? "orange"
+								: "green",
+					});
 					frm.reload_doc();
 				},
 			});

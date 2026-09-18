@@ -365,8 +365,7 @@ def sync_phonebook_now():
 	frappe.only_for("System Manager")
 	from erpnext_webex_integration.tasks import sync_phonebook
 
-	sync_phonebook(force=True)
-	return {"status": "ok"}
+	return sync_phonebook(force=True)
 
 
 @frappe.whitelist()
