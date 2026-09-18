@@ -61,6 +61,8 @@ Der komplette OAuth-Login läuft direkt über ERPNext – kein manuelles Kopiere
 
 ## Bekannte Einschränkungen
 
+- Der CDR-Host (`analytics.webexapis.com`) ist regionsabhängig – bei EU-Organisationen antwortet Webex mit HTTP 451 und nennt darin die korrekte URL (z.B. `analytics-calling-eu.webexapis.com`). Diese wird beim nächsten Abruf automatisch erkannt und in den Einstellungen übernommen.
+
 - Die Zuordnung Rufnummer → Kunde/Kontakt erfolgt über einen Vergleich der letzten Ziffern (tolerant gegenüber Formatierungsunterschieden), nicht über eine exakte E.164-Normalisierung. Bei Rufnummern-Duplikaten über mehrere Kunden hinweg kann es zu Fehlzuordnungen kommen.
 - Das JSON-Schema der Webex-*Organization-Contacts*-API kann sich je Tenant/API-Version leicht unterscheiden. Bitte nach der Ersteinrichtung über **"Verbindung testen"** bzw. einen Testeintrag prüfen, ob die Felder (`displayName`, `phoneNumbers`, …) korrekt übernommen werden, und `tasks.py` (`_build_organization_contact_payload`) bei Abweichungen anpassen.
 - Click-to-Call über die Call-Control-API nutzt aktuell ein gemeinsames Service-Token; der Anruf wird dadurch technisch vom Token-Besitzer aus aufgebaut, nicht individuell je Mitarbeiter. Für echtes Click-to-Call je Agent ist eine Erweiterung um Pro-Benutzer-OAuth nötig (siehe Roadmap).

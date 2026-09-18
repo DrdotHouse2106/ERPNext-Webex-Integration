@@ -61,7 +61,7 @@
   },
   {
    "default": "https://analytics.webexapis.com/v1",
-   "description": "Eigener Host für den Abruf des detaillierten Anrufprotokolls (CDR).",
+   "description": "Eigener Host für den Abruf des detaillierten Anrufprotokolls (CDR). Regionsabhängig: Bei einem Fehler 451 mit Hinweis auf eine andere URL (z.B. EU-Organisationen: https://analytics-calling-eu.webexapis.com/v1) diesen Wert entsprechend anpassen.",
    "fieldname": "cdr_api_base_url",
    "fieldtype": "Data",
    "label": "CDR API Basis-URL"

@@ -79,7 +79,10 @@ def pull_call_history(force=False):
 		return {"status": "skipped", "reason": "Automatischer Abruf ist deaktiviert."}
 
 	lookback_minutes = settings.call_history_lookback_minutes or 60
-	end_time = add_to_date(now_datetime(), minutes=-5)  # Webex verlangt: Reportzeit >= 5 Min. alt
+	# Webex verlangt "aelter als 5 Minuten" (strikt), nicht "genau 5 Minuten" - mit
+	# etwas Puffer (10 statt 5 Minuten) bleibt das auch bei kleinen Uhr-Abweichungen
+	# zwischen den Servern sicher innerhalb des erlaubten Fensters.
+	end_time = add_to_date(now_datetime(), minutes=-10)
 	start_time = get_datetime(settings.last_call_history_sync) if settings.last_call_history_sync else None
 	if force or not start_time or start_time >= end_time:
 		start_time = add_to_date(end_time, minutes=-lookback_minutes)

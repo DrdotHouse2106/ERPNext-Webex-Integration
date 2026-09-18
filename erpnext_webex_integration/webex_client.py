@@ -12,6 +12,8 @@ Wichtig: cdr_feed liegt auf einem eigenen Host (analytics.webexapis.com), nicht 
 webexapis.com - daher der eigene Einstellungs-Wert "cdr_api_base_url".
 """
 
+import re
+
 import frappe
 import requests
 
@@ -87,10 +89,36 @@ class WebexClient:
 		params = {"startTime": start_time, "endTime": end_time, "max": max_records}
 		if locations:
 			params["locations"] = locations
-		result = self._request("GET", f"{self.cdr_base_url}/cdr_feed", params=params)
+
+		try:
+			result = self._request("GET", f"{self.cdr_base_url}/cdr_feed", params=params)
+		except WebexAPIError as exc:
+			# HTTP 451: Webex nennt bei regionalen Organisationen (z.B. EU) direkt den
+			# richtigen Host in der Fehlermeldung - diesen automatisch uebernehmen und
+			# dauerhaft speichern, statt dass die Basis-URL manuell angepasst werden muss.
+			corrected_base = self._extract_redirect_host(exc)
+			if not corrected_base or corrected_base == self.cdr_base_url:
+				raise
+			self.cdr_base_url = corrected_base
+			frappe.db.set_single_value("Webex Settings", "cdr_api_base_url", corrected_base)
+			frappe.db.commit()
+			result = self._request("GET", f"{self.cdr_base_url}/cdr_feed", params=params)
+
 		if isinstance(result, list):
 			return result
 		return result.get("items", [])
+
+	@staticmethod
+	def _extract_redirect_host(exc):
+		if exc.status_code != 451 or not exc.response_body:
+			return None
+		match = re.search(r'should go to URL:\s*"?(https?://[^\s",}]+)', exc.response_body)
+		if not match:
+			return None
+		host = match.group(1).rstrip("/")
+		if not host.endswith("/v1"):
+			host = f"{host}/v1"
+		return host
 
 	# ------------------------------------------------------------------
 	# Rufnummern der Organisation (fuer Marken-Import)
