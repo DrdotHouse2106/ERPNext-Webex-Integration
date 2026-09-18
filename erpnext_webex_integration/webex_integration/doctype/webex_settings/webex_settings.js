@@ -186,6 +186,13 @@ frappe.ui.form.on("Webex Settings", {
 							message: res.message,
 							indicator: "red",
 						});
+					} else if (res.status === "partial") {
+						frappe.msgprint({
+							title: __("Teilweise abgerufen ({0} Datensätze)", [res.fetched]),
+							message: res.message,
+							indicator: "orange",
+						});
+						frm.reload_doc();
 					} else {
 						frappe.show_alert({
 							message: __("{0} Datensätze von Webex erhalten (Zeitraum {1} – {2}).", [

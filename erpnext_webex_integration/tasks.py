@@ -98,44 +98,63 @@ def pull_call_history(force=False):
 	# groesseren Abrufzeitraum (z.B. fuer einen einmaligen Rueckstands-Abruf) wird
 	# daher in mehreren 12h-Haeppchen nachgeladen, statt in einer einzigen Anfrage
 	# (die Webex sonst mit "Time duration is more than 12 hours" ablehnt).
+	# Fortschritt wird nach jedem erfolgreichen Haeppchen sofort gespeichert (statt
+	# erst am Ende), damit bei einem anhaltenden Rate-Limit nichts verloren geht -
+	# ein erneuter Versuch (manuell oder beim naechsten Scheduler-Lauf) macht dann
+	# nur noch beim verbleibenden Rest weiter, statt wieder ganz von vorne zu beginnen.
 	client = WebexClient(settings=settings)
 	total_fetched = 0
 	window_start = start_time
 	first_chunk = True
-	try:
-		while window_start < end_time:
-			if not first_chunk:
-				# Webex begrenzt die Anfragerate fuer cdr_feed recht knapp - bei mehreren
-				# Haeppchen hintereinander (grosser Abrufzeitraum) sonst schnell ein 429.
-				time.sleep(5)
-			first_chunk = False
+	while window_start < end_time:
+		if not first_chunk:
+			# Webex begrenzt die Anfragerate fuer cdr_feed recht knapp - bei mehreren
+			# Haeppchen hintereinander (grosser Abrufzeitraum) sonst schnell ein 429.
+			time.sleep(5)
+		first_chunk = False
 
-			window_end = min(window_start + timedelta(minutes=MAX_CDR_WINDOW_MINUTES), end_time)
-			try:
-				records = client.get_call_history(
-					_to_webex_timestamp(window_start), _to_webex_timestamp(window_end)
-				)
-			except WebexAPIError as exc:
-				if exc.status_code == 429:
-					# Einmaliger, laengerer Retry bei Rate-Limit statt sofort aufzugeben.
-					time.sleep(20)
+		window_end = min(window_start + timedelta(minutes=MAX_CDR_WINDOW_MINUTES), end_time)
+		try:
+			records = client.get_call_history(
+				_to_webex_timestamp(window_start), _to_webex_timestamp(window_end)
+			)
+		except WebexAPIError as exc:
+			if exc.status_code == 429:
+				time.sleep(45)
+				try:
 					records = client.get_call_history(
 						_to_webex_timestamp(window_start), _to_webex_timestamp(window_end)
 					)
-				else:
+				except WebexAPIError as exc2:
+					if exc2.status_code == 429:
+						# Anhaltendes Rate-Limit: bisherigen Fortschritt behalten und
+						# abbrechen, statt weiter draufzuzahlen oder alles zu verwerfen.
+						return {
+							"status": "partial",
+							"fetched": total_fetched,
+							"message": (
+								"Webex-Rate-Limit erreicht - bereits abgerufene Daten wurden "
+								"gespeichert. Bitte in ein paar Minuten erneut versuchen, dann "
+								"wird nur noch der Rest nachgeladen."
+							),
+						}
+					frappe.log_error(title="Webex Anrufprotokoll-Abruf fehlgeschlagen", message=str(exc2))
+					if force:
+						raise
+					return {"status": "error", "message": str(exc2)}
+			else:
+				frappe.log_error(title="Webex Anrufprotokoll-Abruf fehlgeschlagen", message=str(exc))
+				if force:
 					raise
-			for record in records:
-				_create_call_log_from_cdr(record, settings)
-			total_fetched += len(records)
-			window_start = window_end
-	except WebexAPIError as exc:
-		frappe.log_error(title="Webex Anrufprotokoll-Abruf fehlgeschlagen", message=str(exc))
-		if force:
-			raise
-		return {"status": "error", "message": str(exc)}
+				return {"status": "error", "message": str(exc)}
 
-	frappe.db.set_single_value("Webex Settings", "last_call_history_sync", end_time)
-	frappe.db.commit()
+		for record in records:
+			_create_call_log_from_cdr(record, settings)
+		total_fetched += len(records)
+		frappe.db.set_single_value("Webex Settings", "last_call_history_sync", window_end)
+		frappe.db.commit()
+		window_start = window_end
+
 	return {
 		"status": "ok",
 		"fetched": total_fetched,
@@ -260,8 +279,9 @@ def sync_phonebook(force=False):
 
 	if settings.sync_customers:
 		for customer_name in _customers_with_phone():
+			time.sleep(0.3)  # Rate-Limit der Organization-Contacts-API abfedern
 			try:
-				sync_single_customer(customer_name, client=client, settings=settings)
+				_call_with_rate_limit_retry(sync_single_customer, customer_name, client=client, settings=settings)
 				customers_ok += 1
 			except WebexAPIError as exc:
 				customers_failed.append(customer_name)
@@ -272,8 +292,9 @@ def sync_phonebook(force=False):
 
 	if settings.sync_contacts:
 		for contact_name in _contacts_with_phone():
+			time.sleep(0.3)
 			try:
-				sync_single_contact(contact_name, client=client, settings=settings)
+				_call_with_rate_limit_retry(sync_single_contact, contact_name, client=client, settings=settings)
 				contacts_ok += 1
 			except WebexAPIError as exc:
 				contacts_failed.append(contact_name)
@@ -291,6 +312,18 @@ def sync_phonebook(force=False):
 		"contacts_ok": contacts_ok,
 		"contacts_failed": contacts_failed,
 	}
+
+
+def _call_with_rate_limit_retry(func, *args, **kwargs):
+	"""Fuehrt func einmal aus; bei einem 429 (Rate-Limit) wird nach kurzer Pause
+	einmal erneut versucht, statt den Datensatz sofort als fehlgeschlagen zu werten."""
+	try:
+		return func(*args, **kwargs)
+	except WebexAPIError as exc:
+		if exc.status_code == 429:
+			time.sleep(10)
+			return func(*args, **kwargs)
+		raise
 
 
 def _phonebook_sync_due(settings):
