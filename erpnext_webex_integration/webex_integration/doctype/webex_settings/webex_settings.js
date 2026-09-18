@@ -151,9 +151,27 @@ frappe.ui.form.on("Webex Settings", {
 			frappe.call({
 				method: "erpnext_webex_integration.api.pull_call_history_now",
 				freeze: true,
-				callback: () => {
-					frappe.show_alert({ message: __("Abruf gestartet."), indicator: "green" });
-					frm.reload_doc();
+				callback: (r) => {
+					const res = r.message || {};
+					if (res.status === "skipped") {
+						frappe.msgprint(__("Übersprungen: {0}", [res.reason]));
+					} else if (res.status === "error") {
+						frappe.msgprint({
+							title: __("Abruf fehlgeschlagen"),
+							message: res.message,
+							indicator: "red",
+						});
+					} else {
+						frappe.show_alert({
+							message: __("{0} Datensätze von Webex erhalten (Zeitraum {1} – {2}).", [
+								res.fetched,
+								res.from,
+								res.to,
+							]),
+							indicator: "green",
+						});
+						frm.reload_doc();
+					}
 				},
 			});
 		}, __("Anrufprotokoll"));

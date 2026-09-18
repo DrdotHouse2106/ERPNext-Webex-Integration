@@ -66,14 +66,17 @@ def refresh_access_token():
 # Anrufprotokoll (CDR)
 # ----------------------------------------------------------------------
 def pull_call_history(force=False):
+	"""Gibt bei force=True immer ein Ergebnis-Dict zurück (bzw. wirft den echten
+	Fehler weiter), damit ein manueller Klick auf "Jetzt abrufen" nicht einfach
+	nur "gestartet" meldet, obwohl im Hintergrund z.B. ein 403/400 auftrat."""
 	settings = frappe.get_single("Webex Settings")
 	if not settings.enabled:
-		return
+		return {"status": "skipped", "reason": "Integration ist nicht aktiviert."}
 	if not force and not settings.auto_pull_call_history:
 		# Der automatische Scheduler-Job respektiert den Schalter "automatisch
 		# abrufen"; ein manueller Klick auf "Jetzt abrufen" (force=True) soll aber
 		# unabhängig davon immer einen Abruf ausführen.
-		return
+		return {"status": "skipped", "reason": "Automatischer Abruf ist deaktiviert."}
 
 	lookback_minutes = settings.call_history_lookback_minutes or 60
 	end_time = add_to_date(now_datetime(), minutes=-5)  # Webex verlangt: Reportzeit >= 5 Min. alt
@@ -88,13 +91,21 @@ def pull_call_history(force=False):
 		)
 	except WebexAPIError as exc:
 		frappe.log_error(title="Webex Anrufprotokoll-Abruf fehlgeschlagen", message=str(exc))
-		return
+		if force:
+			raise
+		return {"status": "error", "message": str(exc)}
 
 	for record in records:
 		_create_call_log_from_cdr(record, settings)
 
 	frappe.db.set_single_value("Webex Settings", "last_call_history_sync", end_time)
 	frappe.db.commit()
+	return {
+		"status": "ok",
+		"fetched": len(records),
+		"from": _to_webex_timestamp(start_time),
+		"to": _to_webex_timestamp(end_time),
+	}
 
 
 def _to_webex_timestamp(dt):

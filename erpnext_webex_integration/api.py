@@ -346,8 +346,7 @@ def pull_call_history_now():
 	frappe.only_for("System Manager")
 	from erpnext_webex_integration.tasks import pull_call_history
 
-	pull_call_history(force=True)
-	return {"status": "ok"}
+	return pull_call_history(force=True)
 
 
 @frappe.whitelist()
