@@ -244,9 +244,20 @@ def _customers_with_phone():
 
 
 def _contacts_with_phone():
-	return frappe.db.sql_list(
+	"""Nur 'verwaiste' Kontakte ohne Kunden-Verknüpfung - Kontakte, die zu einem
+	Kunden gehören, werden über dessen Telefonbuch-Eintrag mitsynchronisiert
+	(siehe utils.get_all_phones), sonst gäbe es zwei Einträge für dieselbe Person."""
+	all_with_phone = frappe.db.sql_list(
 		"select distinct parent from `tabContact Phone` where phone is not null and phone != ''"
 	)
+	linked_to_customer = set(
+		frappe.get_all(
+			"Dynamic Link",
+			filters={"parenttype": "Contact", "link_doctype": "Customer"},
+			pluck="parent",
+		)
+	)
+	return [name for name in all_with_phone if name not in linked_to_customer]
 
 
 def build_customer_sync_entry(customer_name, settings=None):
@@ -379,11 +390,11 @@ def _get_brand_abbr(customer_name, settings):
 	if not brand_fieldname or not customer_name:
 		return ""
 
-	brand = frappe.db.get_value("Customer", customer_name, brand_fieldname)
-	if not brand:
+	brand_value = frappe.db.get_value("Customer", customer_name, brand_fieldname)
+	if not brand_value:
 		return ""
 
-	return frappe.db.get_value("Webex Brand Line", {"brand": brand}, "abbreviation") or ""
+	return frappe.db.get_value("Webex Brand Line", {"erp_brand_value": brand_value}, "abbreviation") or ""
 
 
 def _build_organization_contact_payload(display_name, phone_numbers, first_name=None, last_name=None):

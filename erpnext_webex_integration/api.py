@@ -226,11 +226,11 @@ def _apply_brand_caller_id(client, settings, doctype, docname):
 	if not customer_name:
 		return
 
-	brand = frappe.db.get_value("Customer", customer_name, brand_fieldname)
-	if not brand:
+	brand_value = frappe.db.get_value("Customer", customer_name, brand_fieldname)
+	if not brand_value:
 		return
 
-	phone_number = frappe.db.get_value("Webex Brand Line", {"brand": brand}, "phone_number")
+	phone_number = frappe.db.get_value("Webex Brand Line", {"erp_brand_value": brand_value}, "phone_number")
 	if not phone_number:
 		return
 

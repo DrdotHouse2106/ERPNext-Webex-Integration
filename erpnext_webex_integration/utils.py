@@ -143,6 +143,19 @@ def get_all_phones(doctype, docname):
 				value = frappe.db.get_value("Customer", docname, fieldname)
 				if value:
 					results.append((value, number_type))
+
+		# Zusätzlich alle Nummern verknüpfter Kontakte einsammeln (z.B. das
+		# Festnetztelefon des Hauptkontakts), damit Kunde und Kontakt nicht als
+		# zwei getrennte Telefonbucheinträge landen (siehe _contacts_with_phone
+		# in tasks.py, das solche verknüpften Kontakte deshalb überspringt).
+		linked_contacts = frappe.get_all(
+			"Dynamic Link",
+			filters={"parenttype": "Contact", "link_doctype": "Customer", "link_name": docname},
+			pluck="parent",
+		)
+		for contact_name in linked_contacts:
+			results.extend(get_all_phones("Contact", contact_name))
+
 		return results
 
 	if doctype == "Contact":
