@@ -8,11 +8,11 @@ class WebexSettings(Document):
 		self.oauth_redirect_uri = self.get_oauth_redirect_uri()
 
 	def get_webhook_target_url(self):
-		site_url = frappe.utils.get_url()
+		site_url = frappe.utils.get_url().rstrip("/")
 		return f"{site_url}/api/method/erpnext_webex_integration.api.webex_webhook"
 
 	def get_oauth_redirect_uri(self):
-		site_url = frappe.utils.get_url()
+		site_url = frappe.utils.get_url().rstrip("/")
 		return f"{site_url}/api/method/erpnext_webex_integration.api.webex_oauth_callback"
 
 	@frappe.whitelist()
