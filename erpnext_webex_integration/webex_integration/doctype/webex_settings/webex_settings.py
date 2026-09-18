@@ -17,18 +17,20 @@ class WebexSettings(Document):
 
 	@frappe.whitelist()
 	def test_connection(self):
-		"""Prueft, ob das hinterlegte Zugriffstoken funktioniert (GET /people/me)."""
+		"""Prueft, ob das hinterlegte Zugriffstoken funktioniert.
+
+		Nutzt bewusst GET /webhooks (Scope spark:webhooks_read) statt /people/me
+		(Scope spark:people_read), da letzterer Scope von dieser Integration
+		nicht angefordert wird (Prinzip der minimalen Rechte)."""
 		from erpnext_webex_integration.webex_client import WebexAPIError, WebexClient
 
 		client = WebexClient(settings=self)
 		try:
-			result = client._request("GET", f"{client.api_base_url}/people/me")
+			webhooks = client.list_webhooks()
 		except WebexAPIError as exc:
 			frappe.throw(str(exc))
 		return {
-			"display_name": result.get("displayName"),
-			"emails": result.get("emails"),
-			"org_id": result.get("orgId"),
+			"display_name": f"{len(webhooks)} Webhook(s) registriert",
 		}
 
 	@frappe.whitelist()
