@@ -54,6 +54,9 @@ scheduler_events = {
     "hourly": [
         "erpnext_webex_integration.tasks.sync_phonebook",
     ],
+    "daily": [
+        "erpnext_webex_integration.tasks.refresh_access_token",
+    ],
 }
 
 # Whitelisted API-Methoden werden direkt über erpnext_webex_integration.api.*

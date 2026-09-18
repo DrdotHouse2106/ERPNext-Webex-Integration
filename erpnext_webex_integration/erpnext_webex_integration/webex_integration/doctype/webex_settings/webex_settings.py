@@ -5,10 +5,15 @@ from frappe.model.document import Document
 class WebexSettings(Document):
 	def validate(self):
 		self.webhook_url = self.get_webhook_target_url()
+		self.oauth_redirect_uri = self.get_oauth_redirect_uri()
 
 	def get_webhook_target_url(self):
 		site_url = frappe.utils.get_url()
 		return f"{site_url}/api/method/erpnext_webex_integration.api.webex_webhook"
+
+	def get_oauth_redirect_uri(self):
+		site_url = frappe.utils.get_url()
+		return f"{site_url}/api/method/erpnext_webex_integration.api.webex_oauth_callback"
 
 	@frappe.whitelist()
 	def test_connection(self):

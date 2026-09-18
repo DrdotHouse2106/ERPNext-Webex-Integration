@@ -1,5 +1,15 @@
 frappe.ui.form.on("Webex Settings", {
 	refresh(frm) {
+		erpnext_webex_integration.show_oauth_result();
+
+		frm.add_custom_button(__("Mit Webex verbinden"), () => {
+			if (frm.is_dirty()) {
+				frappe.msgprint(__("Bitte zuerst speichern, damit Client ID/Secret gesichert sind."));
+				return;
+			}
+			window.location.href = "/api/method/erpnext_webex_integration.api.webex_oauth_connect";
+		}).addClass("btn-primary");
+
 		frm.add_custom_button(__("Verbindung testen"), () => {
 			frappe.call({
 				method: "test_connection",

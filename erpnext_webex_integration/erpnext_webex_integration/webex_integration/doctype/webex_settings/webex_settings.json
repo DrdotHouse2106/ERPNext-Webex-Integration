@@ -9,11 +9,18 @@
   "webex_api_base_url",
   "cdr_api_base_url",
   "org_id",
-  "access_token",
   "column_break_conn",
+  "client_id",
+  "client_secret",
+  "oauth_redirect_uri",
+  "access_token",
+  "token_expires_on",
+  "sb_webhook",
   "webhook_secret",
   "webhook_url",
   "debug_logging",
+  "refresh_token",
+  "refresh_token_expires_on",
   "sb_call_history",
   "auto_pull_call_history",
   "call_history_lookback_minutes",
@@ -65,14 +72,44 @@
    "label": "Webex Organisations-ID"
   },
   {
-   "description": "OAuth-Zugriffstoken einer Webex-Integration mit den benötigten Scopes (siehe README).",
+   "fieldname": "column_break_conn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "description": "Client ID der Webex-Integration (developer.webex.com/my-apps).",
+   "fieldname": "client_id",
+   "fieldtype": "Data",
+   "label": "Client ID"
+  },
+  {
+   "description": "Client Secret der Webex-Integration.",
+   "fieldname": "client_secret",
+   "fieldtype": "Password",
+   "label": "Client Secret"
+  },
+  {
+   "description": "Diese URL exakt so als \"Redirect URI\" in der Webex-Integration hinterlegen (developer.webex.com/my-apps).",
+   "fieldname": "oauth_redirect_uri",
+   "fieldtype": "Data",
+   "label": "OAuth Redirect-URI",
+   "read_only": 1
+  },
+  {
+   "description": "Wird nach dem Verbindungsaufbau über den Button \"Mit Webex verbinden\" automatisch gesetzt und erneuert. Manuelles Einfügen eines Test-Tokens ist ebenfalls möglich.",
    "fieldname": "access_token",
    "fieldtype": "Password",
    "label": "Zugriffstoken"
   },
   {
-   "fieldname": "column_break_conn",
-   "fieldtype": "Column Break"
+   "fieldname": "token_expires_on",
+   "fieldtype": "Datetime",
+   "label": "Zugriffstoken gültig bis",
+   "read_only": 1
+  },
+  {
+   "fieldname": "sb_webhook",
+   "fieldtype": "Section Break",
+   "label": "Webhook (Echtzeit-Ereignisse)"
   },
   {
    "description": "Geheimnis zur Signaturprüfung eingehender Webex-Webhooks (Header X-Spark-Signature).",
@@ -93,6 +130,21 @@
    "fieldname": "debug_logging",
    "fieldtype": "Check",
    "label": "Debug-Protokollierung"
+  },
+  {
+   "fieldname": "refresh_token",
+   "fieldtype": "Password",
+   "hidden": 1,
+   "label": "Refresh Token",
+   "no_copy": 1,
+   "print_hide": 1
+  },
+  {
+   "fieldname": "refresh_token_expires_on",
+   "fieldtype": "Datetime",
+   "hidden": 1,
+   "label": "Refresh Token gültig bis",
+   "read_only": 1
   },
   {
    "fieldname": "sb_call_history",

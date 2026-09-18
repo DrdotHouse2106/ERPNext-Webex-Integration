@@ -13,6 +13,54 @@ FREQUENCY_TO_TIMEDELTA = {
 	"Täglich": {"days": 1},
 }
 
+WEBEX_TOKEN_URL = "https://webexapis.com/v1/access_token"
+
+
+# ----------------------------------------------------------------------
+# Automatische Erneuerung des OAuth-Zugriffstokens
+# ----------------------------------------------------------------------
+def refresh_access_token():
+	"""Erneuert das Zugriffstoken rechtzeitig vor Ablauf (Zugriffstoken: 14 Tage,
+	Refresh-Token: 90 Tage). Wird taeglich per Scheduler ausgefuehrt."""
+	import requests
+
+	settings = frappe.get_single("Webex Settings")
+	if not settings.client_id or not settings.get_password("refresh_token", raise_exception=False):
+		return
+
+	if settings.token_expires_on and get_datetime(settings.token_expires_on) > add_to_date(
+		now_datetime(), days=2
+	):
+		return  # noch nicht faellig
+
+	response = requests.post(
+		WEBEX_TOKEN_URL,
+		data={
+			"grant_type": "refresh_token",
+			"client_id": settings.client_id,
+			"client_secret": settings.get_password("client_secret"),
+			"refresh_token": settings.get_password("refresh_token"),
+		},
+		timeout=20,
+	)
+	if response.status_code >= 400:
+		frappe.log_error(
+			title="Webex Token-Erneuerung fehlgeschlagen",
+			message=f"{response.status_code}: {response.text[:500]}",
+		)
+		return
+
+	token_data = response.json()
+	settings.access_token = token_data.get("access_token")
+	if token_data.get("refresh_token"):
+		settings.refresh_token = token_data.get("refresh_token")
+	settings.token_expires_on = add_to_date(now_datetime(), seconds=token_data.get("expires_in", 1209600))
+	settings.refresh_token_expires_on = add_to_date(
+		now_datetime(), seconds=token_data.get("refresh_token_expires_in", 90 * 24 * 3600)
+	)
+	settings.save(ignore_permissions=True)
+	frappe.db.commit()
+
 
 # ----------------------------------------------------------------------
 # Anrufprotokoll (CDR)

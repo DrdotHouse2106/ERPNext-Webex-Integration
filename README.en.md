@@ -42,26 +42,28 @@ bench --site <your-site> migrate
 
 ## Setup
 
-1. **Create a Webex Integration** at [developer.webex.com/my-apps](https://developer.webex.com/my-apps) with the scopes listed above.
-2. **Obtain an access token**: complete the OAuth flow once (e.g. via the developer portal's "Try It" feature or your own script) and store the resulting access token in ERPNext under **Webex Settings**.
-   > Note: OAuth access tokens expire after 14 days. For continuous operation the refresh token should be renewed regularly (e.g. via a scheduled script) — this is not yet automated in this version (see Roadmap).
-3. In **Webex Settings** (search the awesomebar):
+The full OAuth login runs directly through ERPNext — no manual copying of codes/tokens required.
+
+1. **Create a Webex Integration** at [developer.webex.com/my-apps](https://developer.webex.com/my-apps) with the scopes listed above. Enter a placeholder under "Redirect URI(s)" for now (corrected in step 3).
+2. In ERPNext, open **Webex Settings** (search the awesomebar):
    - Enable *Integration aktiviert* (Enabled).
-   - Enter the access token and organization ID.
-   - Enable the modules you want (call history, phonebook sync, click-to-call).
-4. For real-time call events: set a webhook secret, save, then use the **"Register call webhook"** button (`register_call_webhook()`) to register the webhook with Webex.
-5. Do a first test run using **"Test connection"**, **"Sync phonebook now"** and **"Pull call history now"**.
+   - Enter the **Client ID** and **Client Secret** from the Webex Integration, plus the organization ID.
+   - Save.
+3. The **"OAuth Redirect-URI"** field now shows an address like `https://your-site.example.com/api/method/erpnext_webex_integration.api.webex_oauth_callback`. Enter this URL **exactly** as a Redirect URI in the Webex Integration (replacing the placeholder from step 1) and save there too.
+4. Back in ERPNext, click **"Mit Webex verbinden"** (Connect with Webex) → log in / approve on Webex → you're redirected back to ERPNext automatically. Access and refresh tokens are stored automatically and will be **refreshed automatically** from now on (daily scheduled job, well ahead of the 14-day expiry).
+5. Enable the modules you want (call history, phonebook sync, click-to-call) and save.
+6. For real-time call events: set a webhook secret, save, then use the **"Anrufprotokoll-Webhook registrieren"** button to register the webhook with Webex.
+7. Do a first test run using **"Test connection"**, **"Sync phonebook now"** and **"Pull call history now"**.
+
+> Quick one-off test without setting up OAuth: paste a 12h personal access token from the Webex developer docs directly into the *Zugriffstoken* field. For ongoing operation you still need the OAuth flow (steps 1–4), since only that gets refreshed automatically.
 
 ## Known limitations
 
 - Phone-number-to-customer matching compares the last digits of a number (tolerant to formatting differences) rather than a strict E.164 match, so duplicate numbers across customers can cause mismatches.
 - The JSON schema of Webex's *Organization Contacts* API may differ slightly by tenant/API version. After initial setup, verify via **"Test connection"** / a test entry that fields (`displayName`, `phoneNumbers`, …) are mapped correctly, and adjust `tasks.py` (`_build_organization_contact_payload`) if needed.
 - Click-to-call via the Call Control API currently uses a shared service token, so the call is technically placed from the token owner's devices, not individually per agent. True per-agent click-to-call requires adding per-user OAuth (see Roadmap).
-- OAuth token refresh is not yet automated.
 
 ## Roadmap
-
-- [ ] Automatic refresh of the OAuth access token.
 - [ ] Per-user OAuth so click-to-call and call history are correctly attributed to each agent.
 - [ ] Real-time screen-pop / desk notification on incoming calls.
 - [ ] ERPNext workspace with reporting (calls per customer/agent, response times).

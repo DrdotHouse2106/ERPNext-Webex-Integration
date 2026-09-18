@@ -42,26 +42,28 @@ bench --site <deine-site> migrate
 
 ## Einrichtung
 
-1. **Webex-Integration anlegen**: Unter [developer.webex.com/my-apps](https://developer.webex.com/my-apps) eine neue *Integration* erstellen und die oben genannten Scopes aktivieren.
-2. **Zugriffstoken beziehen**: Den OAuth-Flow einmalig durchführen (z. B. über die "Try It"-Funktion im Webex-Entwicklerportal oder ein eigenes Skript) und das resultierende Access-Token in ERPNext unter **Webex Settings** hinterlegen.
-   > Hinweis: OAuth-Access-Tokens laufen nach 14 Tagen ab. Für einen dauerhaften Betrieb sollte das Refresh-Token regelmäßig (z. B. via geplantem Skript) erneuert werden – das ist in dieser Version noch nicht automatisiert (siehe Roadmap).
-3. In **Webex Settings** (im Awesomebar suchen):
+Der komplette OAuth-Login läuft direkt über ERPNext – kein manuelles Kopieren von Codes/Token nötig.
+
+1. **Webex-Integration anlegen**: Unter [developer.webex.com/my-apps](https://developer.webex.com/my-apps) eine neue *Integration* erstellen und die oben genannten Scopes aktivieren. Bei "Redirect URI(s)" noch einen Platzhalter eintragen (wird in Schritt 3 korrigiert).
+2. In ERPNext **Webex Settings** öffnen (im Awesomebar suchen):
    - *Integration aktiviert* einschalten.
-   - Zugriffstoken, Organisations-ID eintragen.
-   - Gewünschte Module (Anrufprotokoll, Telefonbuch-Sync, Click-to-Call) aktivieren.
-4. Für Echtzeit-Anrufereignisse: Webhook-Geheimnis vergeben, speichern, dann über den Button **"Anrufprotokoll (Webhook) registrieren"** (bzw. `register_call_webhook()`) den Webhook bei Webex anlegen.
-5. Erster Testlauf über die Buttons **"Verbindung testen"**, **"Telefonbuch jetzt synchronisieren"** und **"Anrufprotokoll jetzt abrufen"**.
+   - **Client ID** und **Client Secret** aus der Webex-Integration eintragen, Organisations-ID eintragen.
+   - Speichern.
+3. Das Feld **"OAuth Redirect-URI"** zeigt jetzt eine Adresse wie `https://deine-site.example.com/api/method/erpnext_webex_integration.api.webex_oauth_callback`. Diese URL **exakt** in der Webex-Integration unter "Redirect URI(s)" hinterlegen (den Platzhalter aus Schritt 1 ersetzen) und dort speichern.
+4. Zurück in ERPNext auf **"Mit Webex verbinden"** klicken → Login/Freigabe bei Webex → automatische Weiterleitung zurück nach ERPNext. Zugriffs- und Refresh-Token werden automatisch gespeichert und ab jetzt **automatisch erneuert** (täglicher Scheduler-Job, rechtzeitig vor Ablauf nach 14 Tagen).
+5. Gewünschte Module (Anrufprotokoll, Telefonbuch-Sync, Click-to-Call) aktivieren und speichern.
+6. Für Echtzeit-Anrufereignisse: Webhook-Geheimnis vergeben, speichern, dann über den Button **"Anrufprotokoll-Webhook registrieren"** den Webhook bei Webex anlegen.
+7. Erster Testlauf über die Buttons **"Verbindung testen"**, **"Telefonbuch jetzt synchronisieren"** und **"Anrufprotokoll jetzt abrufen"**.
+
+> Alternative für einen schnellen Einmal-Test ohne OAuth-Integration: Ein 12h-Personal-Access-Token von der Webex-Entwicklerdoku direkt ins Feld *Zugriffstoken* eintragen. Für den Dauerbetrieb ist aber der OAuth-Flow (Schritte 1–4) nötig, da nur so automatisch erneuert wird.
 
 ## Bekannte Einschränkungen
 
 - Die Zuordnung Rufnummer → Kunde/Kontakt erfolgt über einen Vergleich der letzten Ziffern (tolerant gegenüber Formatierungsunterschieden), nicht über eine exakte E.164-Normalisierung. Bei Rufnummern-Duplikaten über mehrere Kunden hinweg kann es zu Fehlzuordnungen kommen.
 - Das JSON-Schema der Webex-*Organization-Contacts*-API kann sich je Tenant/API-Version leicht unterscheiden. Bitte nach der Ersteinrichtung über **"Verbindung testen"** bzw. einen Testeintrag prüfen, ob die Felder (`displayName`, `phoneNumbers`, …) korrekt übernommen werden, und `tasks.py` (`_build_organization_contact_payload`) bei Abweichungen anpassen.
 - Click-to-Call über die Call-Control-API nutzt aktuell ein gemeinsames Service-Token; der Anruf wird dadurch technisch vom Token-Besitzer aus aufgebaut, nicht individuell je Mitarbeiter. Für echtes Click-to-Call je Agent ist eine Erweiterung um Pro-Benutzer-OAuth nötig (siehe Roadmap).
-- Der OAuth-Token-Refresh ist noch nicht automatisiert.
 
 ## Roadmap
-
-- [ ] Automatischer Refresh des OAuth-Access-Tokens.
 - [ ] Pro-Benutzer-OAuth-Anbindung, damit Click-to-Call und Anrufprotokoll korrekt dem jeweiligen Mitarbeiter zugeordnet werden.
 - [ ] Screen-Pop / Desk-Benachrichtigung bei eingehendem Anruf in Echtzeit.
 - [ ] ERPNext-Workspace mit Auswertungen (Anrufe pro Kunde/Mitarbeiter, Reaktionszeiten).

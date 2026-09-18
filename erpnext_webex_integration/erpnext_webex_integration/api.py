@@ -1,13 +1,23 @@
-"""Whitelisted API-Endpunkte: Webhook-Empfang, Click-to-Call, manuelle Trigger."""
+"""Whitelisted API-Endpunkte: Webhook-Empfang, Click-to-Call, OAuth-Anbindung, manuelle Trigger."""
 
 import hashlib
 import hmac
 import json
+from urllib.parse import urlencode
 
 import frappe
+import requests
+from frappe.utils import add_to_date, now_datetime
 
 from erpnext_webex_integration import utils
 from erpnext_webex_integration.webex_client import WebexAPIError, WebexClient
+
+WEBEX_AUTHORIZE_URL = "https://webexapis.com/v1/authorize"
+WEBEX_TOKEN_URL = "https://webexapis.com/v1/access_token"
+OAUTH_SCOPES = (
+	"spark:calls_write spark:calls_read spark-admin:calling_cdr_read "
+	"Identity:contact spark:webhooks_write spark:webhooks_read"
+)
 
 EVENT_TYPE_TO_STATUS = {
 	"created": "Klingelt",
@@ -198,3 +208,92 @@ def pull_call_history_now():
 
 	pull_call_history()
 	return {"status": "ok"}
+
+
+# ----------------------------------------------------------------------
+# OAuth-Anbindung: ERPNext übernimmt den kompletten Autorisierungs-Flow,
+# damit kein manuelles Kopieren von Codes/Token nötig ist.
+# ----------------------------------------------------------------------
+@frappe.whitelist()
+def webex_oauth_connect():
+	"""Leitet den Benutzer zur Webex-Anmeldung/Freigabe weiter."""
+	frappe.only_for("System Manager")
+	settings = frappe.get_single("Webex Settings")
+	if not settings.client_id or not settings.get_password("client_secret", raise_exception=False):
+		frappe.throw(
+			"Bitte zuerst Client ID und Client Secret in den Webex-Einstellungen eintragen und speichern."
+		)
+
+	state = frappe.generate_hash(length=20)
+	frappe.cache().set_value(f"webex_oauth_state:{frappe.session.user}", state, expires_in_sec=600)
+
+	params = {
+		"client_id": settings.client_id,
+		"response_type": "code",
+		"redirect_uri": settings.get_oauth_redirect_uri(),
+		"scope": OAUTH_SCOPES,
+		"state": state,
+	}
+	frappe.local.response["type"] = "redirect"
+	frappe.local.response["location"] = f"{WEBEX_AUTHORIZE_URL}?{urlencode(params)}"
+
+
+@frappe.whitelist()
+def webex_oauth_callback(code=None, state=None, error=None, **kwargs):
+	"""Nimmt die Weiterleitung von Webex entgegen und tauscht den Code gegen Tokens."""
+	frappe.only_for("System Manager")
+	settings = frappe.get_single("Webex Settings")
+
+	if error:
+		frappe.local.response["type"] = "redirect"
+		frappe.local.response["location"] = _settings_url(f"webex_error={error}")
+		return
+
+	expected_state = frappe.cache().get_value(f"webex_oauth_state:{frappe.session.user}")
+	if not code or not state or state != expected_state:
+		frappe.local.response["type"] = "redirect"
+		frappe.local.response["location"] = _settings_url("webex_error=invalid_state")
+		return
+
+	frappe.cache().delete_value(f"webex_oauth_state:{frappe.session.user}")
+
+	try:
+		token_data = _exchange_code_for_tokens(settings, code)
+	except WebexAPIError:
+		frappe.log_error(title="Webex OAuth Token-Tausch fehlgeschlagen", message=frappe.get_traceback())
+		frappe.local.response["type"] = "redirect"
+		frappe.local.response["location"] = _settings_url("webex_error=token_exchange_failed")
+		return
+
+	_store_tokens(settings, token_data)
+	frappe.local.response["type"] = "redirect"
+	frappe.local.response["location"] = _settings_url("webex_connected=1")
+
+
+def _settings_url(query):
+	return f"{frappe.utils.get_url()}/app/webex-settings?{query}"
+
+
+def _exchange_code_for_tokens(settings, code):
+	payload = {
+		"grant_type": "authorization_code",
+		"client_id": settings.client_id,
+		"client_secret": settings.get_password("client_secret"),
+		"code": code,
+		"redirect_uri": settings.get_oauth_redirect_uri(),
+	}
+	response = requests.post(WEBEX_TOKEN_URL, data=payload, timeout=20)
+	if response.status_code >= 400:
+		raise WebexAPIError(f"Token-Tausch fehlgeschlagen ({response.status_code}): {response.text[:500]}")
+	return response.json()
+
+
+def _store_tokens(settings, token_data):
+	settings.access_token = token_data.get("access_token")
+	settings.refresh_token = token_data.get("refresh_token")
+	settings.token_expires_on = add_to_date(now_datetime(), seconds=token_data.get("expires_in", 1209600))
+	settings.refresh_token_expires_on = add_to_date(
+		now_datetime(), seconds=token_data.get("refresh_token_expires_in", 90 * 24 * 3600)
+	)
+	settings.save(ignore_permissions=True)
+	frappe.db.commit()
