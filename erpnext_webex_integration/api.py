@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 
 import frappe
 import requests
-from frappe.utils import add_to_date, now_datetime
+from frappe.utils import add_to_date, get_datetime, now_datetime
 
 from erpnext_webex_integration import utils
 from erpnext_webex_integration.webex_client import WebexAPIError, WebexClient
@@ -99,21 +99,60 @@ def _handle_call_webhook_payload(payload):
 	call_log.status = status
 	call_log.raw_payload = json.dumps(payload, indent=2)
 
-	if event_type in ("created", "alerting") and not call_log.start_time:
-		call_log.start_time = frappe.utils.now_datetime()
-	if event_type in ("disconnected", "deleted"):
-		call_log.end_time = frappe.utils.now_datetime()
+	# "personality" gibt an, ob dieser Anruf-Schenkel bei uns ankam (terminator)
+	# oder von uns ausging (originator) - zuverlässiger als ein Ratespiel anhand
+	# einer separaten API-Abfrage.
+	personality = (data.get("personality") or "").lower()
+	if personality == "terminator":
+		call_log.direction = "Eingehend"
+	elif personality == "originator":
+		call_log.direction = "Ausgehend"
 
+	# "remoteParty.number" ist im Webhook-Payload direkt enthalten - das ist die
+	# Nummer der Gegenseite (bei uns eingehend: die Kundennummer) und muss nicht
+	# erst ueber eine weitere API-Abfrage ermittelt werden.
+	remote_number = (data.get("remoteParty") or {}).get("number")
+	if remote_number:
+		if call_log.direction == "Ausgehend":
+			call_log.to_number = call_log.to_number or remote_number
+		else:
+			call_log.from_number = call_log.from_number or remote_number
+
+	if data.get("created") and not call_log.start_time:
+		call_log.start_time = get_datetime(data["created"])
+	if data.get("disconnected"):
+		call_log.end_time = get_datetime(data["disconnected"])
+
+	duration_start = data.get("answered") or data.get("created")
+	if duration_start and data.get("disconnected"):
+		call_log.duration_seconds = int(
+			(get_datetime(data["disconnected"]) - get_datetime(duration_start)).total_seconds()
+		)
+
+	# Bestes-Bemuehen-Anreicherung ueber die Call-Details-API (kann fehlschlagen,
+	# z.B. ohne Zugriff auf die Anrufe dieses Benutzers - dann bleibt es bei den
+	# bereits aus dem Webhook-Payload bekannten Daten).
 	_enrich_from_call_details(call_log, call_id)
+
+	lookup_number = remote_number or (
+		call_log.to_number if call_log.direction == "Eingehend" else call_log.from_number
+	)
+	if lookup_number:
+		match = utils.find_party_by_phone(lookup_number)
+		if match:
+			call_log.customer = call_log.customer or match.get("customer")
+			call_log.contact = call_log.contact or match.get("contact")
+			call_log.lead = call_log.lead or match.get("lead")
 
 	call_log.save(ignore_permissions=True)
 	frappe.db.commit()  # notwendig, da Webhook-Aufrufe ausserhalb einer Request-Transaktion laufen
 
 
 def _enrich_from_call_details(call_log, call_id):
-	"""Versucht, Rufnummern ueber die Call-Details-API zu ergaenzen. Schlaegt dies fehl
-	(z.B. weil das Service-Token keinen Zugriff auf die Anrufe dieses Benutzers hat),
-	bleibt der Datensatz trotzdem mit den bisher bekannten Daten erhalten."""
+	"""Versucht, fehlende Rufnummern/Richtung ueber die Call-Details-API zu ergaenzen.
+	Ueberschreibt nie bereits aus dem Webhook-Payload bekannte Werte, sondern
+	fuellt nur Luecken. Schlaegt die Abfrage fehl, bleibt der Datensatz trotzdem
+	mit den bisher bekannten Daten erhalten."""
 	settings = frappe.get_single("Webex Settings")
 	if not settings.enabled:
 		return
@@ -129,18 +168,11 @@ def _enrich_from_call_details(call_log, call_id):
 	direction = details.get("direction")
 
 	if from_number:
-		call_log.from_number = from_number
+		call_log.from_number = call_log.from_number or from_number
 	if to_number:
-		call_log.to_number = to_number
-	if direction:
+		call_log.to_number = call_log.to_number or to_number
+	if direction and not call_log.direction:
 		call_log.direction = "Eingehend" if str(direction).lower() == "incoming" else "Ausgehend"
-
-	lookup_number = to_number if call_log.direction == "Eingehend" else from_number
-	match = utils.find_party_by_phone(lookup_number) if lookup_number else None
-	if match:
-		call_log.customer = call_log.customer or match.get("customer")
-		call_log.contact = call_log.contact or match.get("contact")
-		call_log.lead = call_log.lead or match.get("lead")
 
 
 @frappe.whitelist()
