@@ -292,9 +292,18 @@ def import_brand_lines_from_webex():
 		phone_number = entry.get("phoneNumber")
 		owner = entry.get("owner") or entry.get("assignedTo") or {}
 		owner_type = (owner.get("type") or "").upper()
-		owner_name = (owner.get("name") or "").strip() or " ".join(
-			filter(None, [owner.get("firstName"), owner.get("lastName")])
-		).strip()
+		owner_first = (owner.get("firstName") or "").strip()
+		owner_last = (owner.get("lastName") or "").strip()
+
+		# Bei Hunt Groups liefert Webex "Hunt Group" immer als firstName und den
+		# eigentlichen (Marken-)Namen als lastName - z.B. firstName="Hunt Group",
+		# lastName="Federkugel.store". Der reine Markenname ist daher lastName.
+		if owner_first.lower() == "hunt group" and owner_last:
+			owner_name = owner_last
+		else:
+			owner_name = (owner.get("name") or "").strip() or " ".join(
+				filter(None, [owner_first, owner_last])
+			).strip()
 
 		if owner_name:
 			assigned_entries.append(entry)
