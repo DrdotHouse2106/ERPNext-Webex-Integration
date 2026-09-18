@@ -34,9 +34,11 @@ before_uninstall = "erpnext_webex_integration.install.before_uninstall"
 doc_events = {
     "Customer": {
         "on_update": "erpnext_webex_integration.tasks.on_customer_update",
+        "on_trash": "erpnext_webex_integration.tasks.on_customer_trash",
     },
     "Contact": {
         "on_update": "erpnext_webex_integration.tasks.on_contact_update",
+        "on_trash": "erpnext_webex_integration.tasks.on_contact_trash",
     },
 }
 

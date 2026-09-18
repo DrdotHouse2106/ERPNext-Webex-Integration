@@ -298,6 +298,50 @@ def sync_phonebook_now():
 
 
 @frappe.whitelist()
+def preview_phonebook_sync():
+	"""Berechnet, was ein echter Sync tun würde (anlegen/aktualisieren, mit welchem
+	Anzeigenamen/welcher Nummer) - ohne Webex überhaupt zu kontaktieren."""
+	frappe.only_for("System Manager")
+	from erpnext_webex_integration.tasks import (
+		_contacts_with_phone,
+		_customers_with_phone,
+		build_contact_sync_entry,
+		build_customer_sync_entry,
+	)
+
+	settings = frappe.get_single("Webex Settings")
+	entries = []
+
+	if settings.sync_customers:
+		for name in _customers_with_phone():
+			entry = build_customer_sync_entry(name, settings)
+			if entry:
+				entries.append(entry)
+
+	if settings.sync_contacts:
+		for name in _contacts_with_phone():
+			entry = build_contact_sync_entry(name, settings)
+			if entry:
+				entries.append(entry)
+
+	return entries
+
+
+@frappe.whitelist()
+def list_current_organization_contacts():
+	"""Liest den aktuellen Stand des Webex-Organisationstelefonbuchs (read-only,
+	verändert nichts) - damit man vor dem ersten Sync prüfen kann, ob dort schon
+	etwas (z.B. manuell angelegte Einträge) existiert."""
+	frappe.only_for("System Manager")
+	settings = frappe.get_single("Webex Settings")
+	client = WebexClient(settings=settings)
+	try:
+		return client.list_organization_contacts()
+	except WebexAPIError as exc:
+		frappe.throw(str(exc))
+
+
+@frappe.whitelist()
 def pull_call_history_now():
 	frappe.only_for("System Manager")
 	from erpnext_webex_integration.tasks import pull_call_history

@@ -244,15 +244,16 @@ def _contacts_with_phone():
 	)
 
 
-def sync_single_customer(customer_name, client=None, settings=None):
+def build_customer_sync_entry(customer_name, settings=None):
+	"""Berechnet Anzeigename/Rufnummer/Aktion fuer einen Kunden, ohne Webex zu kontaktieren.
+	Wird sowohl vom echten Sync als auch von der reinen Vorschau (preview_phonebook_sync)
+	genutzt, damit beide garantiert dieselbe Logik verwenden."""
 	settings = settings or frappe.get_single("Webex Settings")
-	client = client or WebexClient(settings=settings)
 	customer = frappe.get_doc("Customer", customer_name)
 
-	phone = utils.get_primary_phone("Customer", customer_name)
-	normalized = utils.normalize_phone_number(phone, settings.default_country_code)
-	if not normalized:
-		return
+	phone_numbers = _normalize_phone_list(utils.get_all_phones("Customer", customer_name), settings)
+	if not phone_numbers:
+		return None
 
 	display_name = (settings.contact_display_format or "{customer_name} ({customer_id})").format(
 		customer_name=customer.customer_name,
@@ -261,26 +262,26 @@ def sync_single_customer(customer_name, client=None, settings=None):
 		last_name="",
 		brand_abbr=_get_brand_abbr(customer_name, settings),
 	)
-	payload = _build_organization_contact_payload(display_name, normalized)
+	existing_id = customer.get("webex_contact_id")
+	return {
+		"doctype": "Customer",
+		"docname": customer_name,
+		"display_name": display_name,
+		"phone_numbers": phone_numbers,
+		"phone_number": ", ".join(p["value"] for p in phone_numbers),
+		"webex_contact_id": existing_id,
+		"action": "Aktualisieren" if existing_id else "Neu anlegen",
+	}
 
-	if customer.get("webex_contact_id"):
-		result = client.update_organization_contact(customer.webex_contact_id, payload)
-	else:
-		result = client.create_organization_contact(payload)
-		contact_id = result.get("id")
-		if contact_id:
-			frappe.db.set_value("Customer", customer_name, "webex_contact_id", contact_id)
 
-
-def sync_single_contact(contact_name, client=None, settings=None):
+def build_contact_sync_entry(contact_name, settings=None):
+	"""Analog zu build_customer_sync_entry(), fuer Contact-Datensaetze."""
 	settings = settings or frappe.get_single("Webex Settings")
-	client = client or WebexClient(settings=settings)
 	contact = frappe.get_doc("Contact", contact_name)
 
-	phone = utils.get_primary_phone("Contact", contact_name)
-	normalized = utils.normalize_phone_number(phone, settings.default_country_code)
-	if not normalized:
-		return
+	phone_numbers = _normalize_phone_list(utils.get_all_phones("Contact", contact_name), settings)
+	if not phone_numbers:
+		return None
 
 	customer_name = frappe.db.get_value(
 		"Dynamic Link",
@@ -295,12 +296,70 @@ def sync_single_contact(contact_name, client=None, settings=None):
 		last_name=contact.last_name or "",
 		brand_abbr=_get_brand_abbr(customer_name, settings) if customer_name else "",
 	)
+	existing_id = contact.get("webex_contact_id")
+	return {
+		"doctype": "Contact",
+		"docname": contact_name,
+		"display_name": display_name,
+		"phone_numbers": phone_numbers,
+		"phone_number": ", ".join(p["value"] for p in phone_numbers),
+		"webex_contact_id": existing_id,
+		"action": "Aktualisieren" if existing_id else "Neu anlegen",
+		"first_name": contact.first_name,
+		"last_name": contact.last_name,
+	}
+
+
+def _normalize_phone_list(raw_numbers, settings):
+	"""Normalisiert eine Liste von (rufnummer, typ)-Tupeln und entfernt Duplikate
+	(z.B. falls Mobil- und Festnetzfeld versehentlich dieselbe Nummer enthalten)."""
+	seen = set()
+	result = []
+	for number, number_type in raw_numbers:
+		normalized = utils.normalize_phone_number(number, settings.default_country_code)
+		if not normalized or normalized in seen:
+			continue
+		seen.add(normalized)
+		result.append({"value": normalized, "type": number_type})
+	return result
+
+
+def sync_single_customer(customer_name, client=None, settings=None):
+	settings = settings or frappe.get_single("Webex Settings")
+	client = client or WebexClient(settings=settings)
+
+	entry = build_customer_sync_entry(customer_name, settings)
+	if not entry:
+		return
+
+	payload = _build_organization_contact_payload(entry["display_name"], entry["phone_numbers"])
+
+	if entry["webex_contact_id"]:
+		client.update_organization_contact(entry["webex_contact_id"], payload)
+	else:
+		result = client.create_organization_contact(payload)
+		contact_id = result.get("id")
+		if contact_id:
+			frappe.db.set_value("Customer", customer_name, "webex_contact_id", contact_id)
+
+
+def sync_single_contact(contact_name, client=None, settings=None):
+	settings = settings or frappe.get_single("Webex Settings")
+	client = client or WebexClient(settings=settings)
+
+	entry = build_contact_sync_entry(contact_name, settings)
+	if not entry:
+		return
+
 	payload = _build_organization_contact_payload(
-		display_name, normalized, first_name=contact.first_name, last_name=contact.last_name
+		entry["display_name"],
+		entry["phone_numbers"],
+		first_name=entry.get("first_name"),
+		last_name=entry.get("last_name"),
 	)
 
-	if contact.get("webex_contact_id"):
-		client.update_organization_contact(contact.webex_contact_id, payload)
+	if entry["webex_contact_id"]:
+		client.update_organization_contact(entry["webex_contact_id"], payload)
 	else:
 		result = client.create_organization_contact(payload)
 		contact_id = result.get("id")
@@ -322,16 +381,21 @@ def _get_brand_abbr(customer_name, settings):
 	return frappe.db.get_value("Webex Brand Line", {"brand": brand}, "abbreviation") or ""
 
 
-def _build_organization_contact_payload(display_name, phone_number, first_name=None, last_name=None):
+def _build_organization_contact_payload(display_name, phone_numbers, first_name=None, last_name=None):
 	# Schema orientiert sich an der SCIM-basierten Organization-Contacts-API von Webex.
 	# Sollte das Feldschema im eigenen Tenant abweichen, hier anpassen (siehe README).
+	# phone_numbers: Liste von {"value": ..., "type": "mobile"|"work"} - i.d.R. Mobil
+	# UND Festnetz, falls beide am Kunden/Kontakt hinterlegt sind.
 	return {
 		"displayName": display_name,
 		"name": {
 			"givenName": first_name or display_name,
 			"familyName": last_name or "",
 		},
-		"phoneNumbers": [{"value": phone_number, "type": "work", "primary": True}],
+		"phoneNumbers": [
+			{"value": p["value"], "type": p["type"], "primary": i == 0}
+			for i, p in enumerate(phone_numbers)
+		],
 	}
 
 
@@ -362,3 +426,35 @@ def on_contact_update(doc, method=None):
 		deduplicate=True,
 		contact_name=doc.name,
 	)
+
+
+# ----------------------------------------------------------------------
+# Aufraeumen beim Loeschen (auch durch "Zusammenführen"/Merge ausgelöst)
+# ----------------------------------------------------------------------
+def on_customer_trash(doc, method=None):
+	"""Beim Zusammenführen zweier Kunden löscht Frappe das 'verlierende' Dokument -
+	dabei würde webex_contact_id sonst ohne Aufräumen verloren gehen und einen
+	verwaisten Eintrag im (organisationsweiten!) Webex-Telefonbuch hinterlassen."""
+	_delete_organization_contact_best_effort(doc.get("webex_contact_id"))
+
+
+def on_contact_trash(doc, method=None):
+	_delete_organization_contact_best_effort(doc.get("webex_contact_id"))
+
+
+def _delete_organization_contact_best_effort(webex_contact_id):
+	if not webex_contact_id:
+		return
+
+	settings = frappe.get_cached_doc("Webex Settings")
+	if not settings.enabled:
+		return
+
+	try:
+		client = WebexClient(settings=settings)
+		client.delete_organization_contact(webex_contact_id)
+	except WebexAPIError as exc:
+		frappe.log_error(
+			title="Webex Telefonbuch-Eintrag konnte beim Löschen nicht entfernt werden",
+			message=f"webex_contact_id={webex_contact_id}: {exc}",
+		)

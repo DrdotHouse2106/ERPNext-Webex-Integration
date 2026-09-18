@@ -126,3 +126,34 @@ def get_primary_phone(doctype, docname):
 		return phone
 
 	frappe.throw(f"Nicht unterstützter Doctype für Rufnummernermittlung: {doctype}")
+
+
+def get_all_phones(doctype, docname):
+	"""Liefert alle hinterlegten Rufnummern eines Customer- oder Contact-Datensatzes
+	(Mobil UND Festnetz), für die Telefonbuch-Synchronisation - im Gegensatz zu
+	get_primary_phone(), das für Click-to-Call bewusst nur eine Nummer liefert.
+
+	Rückgabe: Liste von (rufnummer, typ) mit typ in ("mobile", "work")."""
+	results = []
+
+	if doctype == "Customer":
+		customer_meta = frappe.get_meta("Customer")
+		for fieldname, number_type in (("mobile_no", "mobile"), ("phone_no", "work")):
+			if customer_meta.has_field(fieldname):
+				value = frappe.db.get_value("Customer", docname, fieldname)
+				if value:
+					results.append((value, number_type))
+		return results
+
+	if doctype == "Contact":
+		rows = frappe.get_all(
+			"Contact Phone",
+			filters={"parent": docname},
+			fields=["phone", "is_primary_mobile_no"],
+		)
+		for row in rows:
+			if row.phone:
+				results.append((row.phone, "mobile" if row.is_primary_mobile_no else "work"))
+		return results
+
+	frappe.throw(f"Nicht unterstützter Doctype für Rufnummernermittlung: {doctype}")

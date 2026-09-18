@@ -70,6 +70,51 @@ frappe.ui.form.on("Webex Settings", {
 		}, __("Webhook"));
 
 		// Gruppe: Telefonbuch
+		frm.add_custom_button(__("Vorschau (sendet nichts an Webex)"), () => {
+			frappe.call({
+				method: "erpnext_webex_integration.api.preview_phonebook_sync",
+				freeze: true,
+				callback: (r) => {
+					const entries = r.message || [];
+					if (!entries.length) {
+						frappe.msgprint(__("Keine Kunden/Kontakte mit Rufnummer gefunden (oder Sync für Kunden/Kontakte ist deaktiviert)."));
+						return;
+					}
+					let rows = entries
+						.map(
+							(e) =>
+								`<tr><td>${e.doctype}</td><td>${frappe.utils.escape_html(e.docname)}</td><td>${frappe.utils.escape_html(e.display_name)}</td><td>${e.phone_number}</td><td>${e.action}</td></tr>`
+						)
+						.join("");
+					frappe.msgprint({
+						title: __("Vorschau: {0} Einträge würden gesendet", [entries.length]),
+						wide: true,
+						message: `<div style="max-height:60vh;overflow:auto"><table class="table table-bordered">
+							<thead><tr><th>Typ</th><th>ID</th><th>Anzeigename</th><th>Rufnummer</th><th>Aktion</th></tr></thead>
+							<tbody>${rows}</tbody>
+						</table></div>`,
+						indicator: "blue",
+					});
+				},
+			});
+		}, __("Telefonbuch"));
+
+		frm.add_custom_button(__("Aktuelle Einträge in Webex anzeigen"), () => {
+			frappe.call({
+				method: "erpnext_webex_integration.api.list_current_organization_contacts",
+				freeze: true,
+				callback: (r) => {
+					const contacts = r.message || [];
+					frappe.msgprint({
+						title: __("Aktuell {0} Einträge im Webex-Telefonbuch", [contacts.length]),
+						wide: true,
+						message: `<pre style="max-height:60vh;overflow:auto">${JSON.stringify(contacts, null, 2)}</pre>`,
+						indicator: "blue",
+					});
+				},
+			});
+		}, __("Telefonbuch"));
+
 		frm.add_custom_button(__("Jetzt synchronisieren"), () => {
 			frappe.call({
 				method: "erpnext_webex_integration.api.sync_phonebook_now",
