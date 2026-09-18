@@ -1,6 +1,7 @@
 """Geplante Aufgaben: Anrufprotokoll abrufen, Telefonbuch synchronisieren."""
 
 import json
+import time
 from datetime import datetime, timedelta, timezone
 
 import frappe
@@ -100,12 +101,29 @@ def pull_call_history(force=False):
 	client = WebexClient(settings=settings)
 	total_fetched = 0
 	window_start = start_time
+	first_chunk = True
 	try:
 		while window_start < end_time:
+			if not first_chunk:
+				# Webex begrenzt die Anfragerate fuer cdr_feed recht knapp - bei mehreren
+				# Haeppchen hintereinander (grosser Abrufzeitraum) sonst schnell ein 429.
+				time.sleep(5)
+			first_chunk = False
+
 			window_end = min(window_start + timedelta(minutes=MAX_CDR_WINDOW_MINUTES), end_time)
-			records = client.get_call_history(
-				_to_webex_timestamp(window_start), _to_webex_timestamp(window_end)
-			)
+			try:
+				records = client.get_call_history(
+					_to_webex_timestamp(window_start), _to_webex_timestamp(window_end)
+				)
+			except WebexAPIError as exc:
+				if exc.status_code == 429:
+					# Einmaliger, laengerer Retry bei Rate-Limit statt sofort aufzugeben.
+					time.sleep(20)
+					records = client.get_call_history(
+						_to_webex_timestamp(window_start), _to_webex_timestamp(window_end)
+					)
+				else:
+					raise
 			for record in records:
 				_create_call_log_from_cdr(record, settings)
 			total_fetched += len(records)
@@ -383,7 +401,7 @@ def sync_single_customer(customer_name, client=None, settings=None):
 		client.update_organization_contact(entry["webex_contact_id"], payload)
 	else:
 		result = client.create_organization_contact(payload)
-		contact_id = result.get("id")
+		contact_id = result.get("contactId") or result.get("id")
 		if contact_id:
 			frappe.db.set_value("Customer", customer_name, "webex_contact_id", contact_id)
 
@@ -407,7 +425,7 @@ def sync_single_contact(contact_name, client=None, settings=None):
 		client.update_organization_contact(entry["webex_contact_id"], payload)
 	else:
 		result = client.create_organization_contact(payload)
-		contact_id = result.get("id")
+		contact_id = result.get("contactId") or result.get("id")
 		if contact_id:
 			frappe.db.set_value("Contact", contact_name, "webex_contact_id", contact_id)
 
@@ -427,20 +445,17 @@ def _get_brand_abbr(customer_name, settings):
 
 
 def _build_organization_contact_payload(display_name, phone_numbers, first_name=None, last_name=None):
-	# Schema orientiert sich an der SCIM-basierten Organization-Contacts-API von Webex.
-	# Sollte das Feldschema im eigenen Tenant abweichen, hier anpassen (siehe README).
+	# Schema anhand echter Antwortdaten aus dem eigenen Tenant verifiziert
+	# (schemas: "urn:cisco:codev:identity:contact:core:1.0"): firstName/lastName
+	# liegen direkt auf oberster Ebene, nicht verschachtelt unter "name". Ein
+	# "primary"-Feld bei phoneNumbers kommt in den echten Antworten nicht vor.
 	# phone_numbers: Liste von {"value": ..., "type": "mobile"|"work"} - i.d.R. Mobil
 	# UND Festnetz, falls beide am Kunden/Kontakt hinterlegt sind.
 	return {
 		"displayName": display_name,
-		"name": {
-			"givenName": first_name or display_name,
-			"familyName": last_name or "",
-		},
-		"phoneNumbers": [
-			{"value": p["value"], "type": p["type"], "primary": i == 0}
-			for i, p in enumerate(phone_numbers)
-		],
+		"firstName": first_name or display_name,
+		"lastName": last_name or "",
+		"phoneNumbers": [{"value": p["value"], "type": p["type"]} for p in phone_numbers],
 	}
 
 
