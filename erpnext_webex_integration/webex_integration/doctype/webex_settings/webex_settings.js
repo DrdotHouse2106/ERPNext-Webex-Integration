@@ -120,6 +120,30 @@ frappe.ui.form.on("Webex Settings", {
 			frm.reload_doc();
 		});
 
+		// Bei einem grossen Rueckstand/Bestand unterbricht der Hintergrundjob sich
+		// selbst und reiht sich automatisch erneut ein (siehe
+		// run_call_history_pull_background()/run_phonebook_sync_background() in
+		// tasks.py) - diese Zwischenmeldungen informieren nur, ohne den Job
+		// abzuschliessen (kein reload_doc, da noch nicht fertig).
+		frappe.realtime.off("webex_call_history_pull_progress");
+		frappe.realtime.on("webex_call_history_pull_progress", (res) => {
+			frappe.show_alert({
+				message: __("Anrufprotokoll: {0} Datensätze bisher – läuft im Hintergrund weiter…", [res.fetched]),
+				indicator: "blue",
+			});
+		});
+
+		frappe.realtime.off("webex_phonebook_sync_progress");
+		frappe.realtime.on("webex_phonebook_sync_progress", (res) => {
+			frappe.show_alert({
+				message: __("Telefonbuch-Sync: {0} Kunden / {1} Kontakte bisher – läuft im Hintergrund weiter…", [
+					res.customers_ok,
+					res.contacts_ok,
+				]),
+				indicator: "blue",
+			});
+		});
+
 		frappe.model.with_doctype("Customer", () => {
 			const options = frappe
 				.get_meta("Customer")

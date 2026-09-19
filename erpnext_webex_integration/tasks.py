@@ -17,6 +17,12 @@ FREQUENCY_TO_TIMEDELTA = {
 
 WEBEX_TOKEN_URL = "https://webexapis.com/v1/access_token"
 MAX_CDR_WINDOW_MINUTES = 720  # Webex Detailed Call History: max. 12h Zeitfenster pro Anfrage
+# Sicherheitsmarge unter dem RQ-Job-Timeout der "long"-Warteschlange (auf Frappe
+# Cloud i.d.R. 1500s) - bei einem grossen Rueckstand (z.B. Wochen an CDR-Haeppchen
+# oder tausende Telefonbuch-Eintraege) wird die Arbeit stattdessen sauber
+# unterbrochen und der Hintergrundjob setzt sich selbst fort, statt mit
+# "Task exceeded maximum timeout value" abzubrechen.
+MAX_JOB_SECONDS = 1200
 
 
 # ----------------------------------------------------------------------
@@ -106,6 +112,7 @@ def pull_call_history(force=False):
 	total_fetched = 0
 	window_start = start_time
 	first_chunk = True
+	job_started = time.monotonic()
 	while window_start < end_time:
 		if not first_chunk:
 			# Webex begrenzt die Anfragerate fuer cdr_feed recht knapp - bei mehreren
@@ -140,6 +147,25 @@ def pull_call_history(force=False):
 		frappe.db.set_single_value("Webex Settings", "last_call_history_sync", window_end)
 		frappe.db.commit()
 		window_start = window_end
+
+		if window_start < end_time and time.monotonic() - job_started > MAX_JOB_SECONDS:
+			# Grosser Rueckstand (viele 12h-Haeppchen): nicht in einem einzigen
+			# Hintergrundjob-Lauf zu Ende abrufen versuchen - das wuerde den
+			# RQ-Job-Timeout der "long"-Warteschlange ueberschreiten und mit
+			# "Task exceeded maximum timeout value" abbrechen. Stattdessen hier
+			# sauber unterbrechen; last_call_history_sync ist bereits auf den
+			# zuletzt erledigten Haeppchen-Zeitpunkt gesetzt, ein Folgeaufruf
+			# (Hintergrundjob setzt sich selbst fort, siehe
+			# run_call_history_pull_background) macht direkt beim Rest weiter.
+			return {
+				"status": "resuming",
+				"fetched": total_fetched,
+				"message": (
+					"Großer Rückstand - der bereits abgerufene Teil wurde "
+					"gespeichert, der Rest wird automatisch im Hintergrund "
+					"nachgeladen."
+				),
+			}
 
 	return {
 		"status": "ok",
@@ -177,8 +203,24 @@ def run_call_history_pull_background(user):
 	aufrufenden Benutzer per Realtime-Event mit dem Ergebnis, sobald fertig - ein
 	manueller Abruf ueber "Jetzt abrufen" kann durch die 12h-Haeppchen inkl.
 	Drosselung/Retry gegen Webex' Rate-Limit laenger dauern als der Web-Request-
-	Timeout erlaubt ("Zeitüberschreitung der Anfrage")."""
+	Timeout erlaubt ("Zeitüberschreitung der Anfrage").
+
+	Liefert pull_call_history() bei einem grossen Rueckstand status="resuming"
+	(Zeitbudget MAX_JOB_SECONDS ueberschritten), reiht sich der Job selbst erneut
+	ein, statt zu versuchen, alles in einem einzigen (Hintergrund-)Lauf zu Ende
+	abzurufen - das wuerde sonst den RQ-Job-Timeout der "long"-Warteschlange
+	ueberschreiten ("Task exceeded maximum timeout value")."""
 	result = pull_call_history(force=True)
+	if result.get("status") == "resuming":
+		frappe.publish_realtime("webex_call_history_pull_progress", result, user=user)
+		frappe.enqueue(
+			"erpnext_webex_integration.tasks.run_call_history_pull_background",
+			queue="long",
+			job_id=f"webex-manual-call-history-pull-{user}",
+			deduplicate=True,
+			user=user,
+		)
+		return
 	frappe.publish_realtime("webex_call_history_pull_done", result, user=user)
 
 
@@ -396,10 +438,26 @@ def _find_recent_call_log_by_number_and_time(number, start_time, tolerance_minut
 # ----------------------------------------------------------------------
 # Telefonbuch-Synchronisation
 # ----------------------------------------------------------------------
-def sync_phonebook(force=False):
+def sync_phonebook(
+	force=False,
+	customer_names=None,
+	contact_names=None,
+	customers_ok=0,
+	customers_failed=None,
+	contacts_ok=0,
+	contacts_failed=None,
+):
 	"""Gibt bei force=True immer ein Ergebnis-Dict zurück, damit ein manueller
 	Klick auf "Jetzt synchronisieren" das tatsächliche Ergebnis zeigt statt nur
-	pauschal "gestartet" zu melden."""
+	pauschal "gestartet" zu melden.
+
+	customer_names/contact_names/*_ok/*_failed erlauben einen Fortsetzungs-Aufruf
+	(siehe run_phonebook_sync_background): werden sie nicht übergeben (erster
+	Aufruf), wird die vollständige Liste einmalig ermittelt; bei einem grossen
+	Bestand (viele tausend Einträge, je 0.3s Drosselung + API-Laufzeit) würde ein
+	einzelner Hintergrundjob-Lauf sonst den RQ-Job-Timeout der "long"-Warteschlange
+	überschreiten - das Zeitbudget MAX_JOB_SECONDS unterbricht dann sauber mit
+	status="resuming" und den noch verbleibenden Namen, statt abzustürzen."""
 	settings = frappe.get_single("Webex Settings")
 	if not settings.enabled:
 		return {"status": "skipped", "reason": "Integration ist nicht aktiviert."}
@@ -411,35 +469,49 @@ def sync_phonebook(force=False):
 	if not force and not _phonebook_sync_due(settings):
 		return {"status": "skipped", "reason": "Laut Intervall noch nicht fällig."}
 
+	customers_failed = list(customers_failed or [])
+	contacts_failed = list(contacts_failed or [])
+	if customer_names is None:
+		customer_names = list(_customers_with_phone()) if settings.sync_customers else []
+	if contact_names is None:
+		contact_names = list(_contacts_with_phone()) if settings.sync_contacts else []
+
 	client = WebexClient(settings=settings)
-	customers_ok, customers_failed = 0, []
-	contacts_ok, contacts_failed = 0, []
+	job_started = time.monotonic()
 
-	if settings.sync_customers:
-		for customer_name in _customers_with_phone():
-			time.sleep(0.3)  # Rate-Limit der Organization-Contacts-API abfedern
-			try:
-				_call_with_rate_limit_retry(sync_single_customer, customer_name, client=client, settings=settings)
-				customers_ok += 1
-			except WebexAPIError as exc:
-				customers_failed.append(customer_name)
-				frappe.log_error(
-					title="Webex Telefonbuch-Sync (Kunde) fehlgeschlagen",
-					message=f"{customer_name}: {exc}",
-				)
+	while customer_names:
+		customer_name = customer_names.pop(0)
+		time.sleep(0.3)  # Rate-Limit der Organization-Contacts-API abfedern
+		try:
+			_call_with_rate_limit_retry(sync_single_customer, customer_name, client=client, settings=settings)
+			customers_ok += 1
+		except WebexAPIError as exc:
+			customers_failed.append(customer_name)
+			frappe.log_error(
+				title="Webex Telefonbuch-Sync (Kunde) fehlgeschlagen",
+				message=f"{customer_name}: {exc}",
+			)
+		if time.monotonic() - job_started > MAX_JOB_SECONDS:
+			return _phonebook_sync_resuming(
+				customer_names, contact_names, customers_ok, customers_failed, contacts_ok, contacts_failed
+			)
 
-	if settings.sync_contacts:
-		for contact_name in _contacts_with_phone():
-			time.sleep(0.3)
-			try:
-				_call_with_rate_limit_retry(sync_single_contact, contact_name, client=client, settings=settings)
-				contacts_ok += 1
-			except WebexAPIError as exc:
-				contacts_failed.append(contact_name)
-				frappe.log_error(
-					title="Webex Telefonbuch-Sync (Kontakt) fehlgeschlagen",
-					message=f"{contact_name}: {exc}",
-				)
+	while contact_names:
+		contact_name = contact_names.pop(0)
+		time.sleep(0.3)
+		try:
+			_call_with_rate_limit_retry(sync_single_contact, contact_name, client=client, settings=settings)
+			contacts_ok += 1
+		except WebexAPIError as exc:
+			contacts_failed.append(contact_name)
+			frappe.log_error(
+				title="Webex Telefonbuch-Sync (Kontakt) fehlgeschlagen",
+				message=f"{contact_name}: {exc}",
+			)
+		if time.monotonic() - job_started > MAX_JOB_SECONDS:
+			return _phonebook_sync_resuming(
+				customer_names, contact_names, customers_ok, customers_failed, contacts_ok, contacts_failed
+			)
 
 	frappe.db.set_single_value("Webex Settings", "last_phonebook_sync", now_datetime())
 	frappe.db.commit()
@@ -452,13 +524,65 @@ def sync_phonebook(force=False):
 	}
 
 
-def run_phonebook_sync_background(user):
+def _phonebook_sync_resuming(customer_names, contact_names, customers_ok, customers_failed, contacts_ok, contacts_failed):
+	# Grosser Bestand: nicht in einem einzigen Hintergrundjob-Lauf zu Ende
+	# synchronisieren versuchen (siehe sync_phonebook()-Docstring). Bereits
+	# verarbeitete Eintraege sind uebernommen, die verbleibenden Namen werden
+	# unveraendert an den naechsten Fortsetzungs-Aufruf weitergereicht.
+	return {
+		"status": "resuming",
+		"customer_names": customer_names,
+		"contact_names": contact_names,
+		"customers_ok": customers_ok,
+		"customers_failed": customers_failed,
+		"contacts_ok": contacts_ok,
+		"contacts_failed": contacts_failed,
+		"message": (
+			"Großer Bestand - bereits verarbeitete Einträge wurden gespeichert, "
+			"der Rest wird automatisch im Hintergrund weiter synchronisiert."
+		),
+	}
+
+
+def run_phonebook_sync_background(
+	user, customer_names=None, contact_names=None, customers_ok=0, customers_failed=None, contacts_ok=0, contacts_failed=None
+):
 	"""Fuehrt sync_phonebook() als Hintergrundjob aus und benachrichtigt den
 	aufrufenden Benutzer per Realtime-Event mit dem Ergebnis, sobald fertig - bei
 	vielen Kunden/Kontakten (inkl. Drosselung gegen Webex' Rate-Limit, 0.3s pro
 	Datensatz) ueberschreitet ein synchroner Sync sonst den Web-Request-Timeout
-	("Zeitüberschreitung der Anfrage")."""
-	result = sync_phonebook(force=True)
+	("Zeitüberschreitung der Anfrage").
+
+	Liefert sync_phonebook() status="resuming" (Zeitbudget ueberschritten, grosser
+	Bestand), reiht sich der Job mit den verbleibenden Namen selbst erneut ein,
+	statt zu versuchen, alles in einem Lauf zu Ende zu bringen - das wuerde sonst
+	den RQ-Job-Timeout der "long"-Warteschlange ueberschreiten ("Task exceeded
+	maximum timeout value")."""
+	result = sync_phonebook(
+		force=True,
+		customer_names=customer_names,
+		contact_names=contact_names,
+		customers_ok=customers_ok,
+		customers_failed=customers_failed,
+		contacts_ok=contacts_ok,
+		contacts_failed=contacts_failed,
+	)
+	if result.get("status") == "resuming":
+		frappe.publish_realtime("webex_phonebook_sync_progress", result, user=user)
+		frappe.enqueue(
+			"erpnext_webex_integration.tasks.run_phonebook_sync_background",
+			queue="long",
+			job_id=f"webex-manual-phonebook-sync-{user}",
+			deduplicate=True,
+			user=user,
+			customer_names=result["customer_names"],
+			contact_names=result["contact_names"],
+			customers_ok=result["customers_ok"],
+			customers_failed=result["customers_failed"],
+			contacts_ok=result["contacts_ok"],
+			contacts_failed=result["contacts_failed"],
+		)
+		return
 	frappe.publish_realtime("webex_phonebook_sync_done", result, user=user)
 
 
