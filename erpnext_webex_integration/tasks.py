@@ -537,11 +537,14 @@ def _build_organization_contact_payload(display_name, phone_numbers, first_name=
 	# "schemas" und "contactType" sind beim Anlegen (POST) Pflichtfelder - beim
 	# Lesen (GET) tauchte "schemas" zwar in der Antwort auf, aber ohne diese beiden
 	# Felder im Request lehnt Webex mit 400 "NotNull.orgContactBean.contactType /
-	# schemas -> must not be null" ab.
+	# schemas -> must not be null" ab. WICHTIG: "schemas" ist hier (anders als im
+	# SCIM-Standard sonst üblich) ein einzelner String, kein Array - ein Array
+	# führte zu 400 "Cannot deserialize value of type java.lang.String from Array
+	# value" (mit echten Antwortdaten des eigenen Tenants verifiziert).
 	# phone_numbers: Liste von {"value": ..., "type": "mobile"|"work"} - i.d.R. Mobil
 	# UND Festnetz, falls beide am Kunden/Kontakt hinterlegt sind.
 	return {
-		"schemas": ["urn:cisco:codev:identity:contact:core:1.0"],
+		"schemas": "urn:cisco:codev:identity:contact:core:1.0",
 		"contactType": "person",
 		"displayName": display_name,
 		"firstName": first_name or display_name,
