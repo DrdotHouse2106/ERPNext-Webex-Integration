@@ -642,10 +642,15 @@ def _build_organization_contact_payload(display_name, phone_numbers, first_name=
 	# Wert: HIDDEN_USER_CUSTOM, HIDDEN_ORG_CUSTOM, LOCALLDAP, ORG_CONTACT, CUSTOM,
 	# CLOUD, CORPORATE) - "person" ist dort NICHT gültig. "CUSTOM" passt für einen
 	# manuell/automatisiert angelegten Telefonbuch-Eintrag (kein LDAP-/Cloud-Nutzer).
+	# "source" ist ebenfalls Pflicht - ohne das Feld (null) lehnte diese Organisation
+	# mit 403 "Source null is not supported by organization, only sources [CH]
+	# are allowed" ab. "CH" (Control Hub) ist laut Fehlermeldung der einzige für
+	# diese Organisation zulässige Wert.
 	# phone_numbers: Liste von {"value": ..., "type": "mobile"|"work"} - i.d.R. Mobil
 	# UND Festnetz, falls beide am Kunden/Kontakt hinterlegt sind.
 	return {
 		"schemas": "urn:cisco:codev:identity:contact:core:1.0",
+		"source": "CH",
 		"contactType": "CUSTOM",
 		"displayName": display_name,
 		"firstName": first_name or display_name,
