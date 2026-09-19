@@ -239,7 +239,13 @@ frappe.ui.form.on("Webex Settings", {
 							return `<tr>
 								<td style="white-space:nowrap">${frappe.datetime.str_to_user(row.creation)}</td>
 								<td>${frappe.utils.escape_html(row.title || "")}</td>
-								<td><pre style="white-space:pre-wrap;margin:0;font-size:11px">${frappe.utils.escape_html((row.error || "").slice(0, 500))}</pre></td>
+								<td>
+									<div style="color:#c0392b;font-weight:600">${frappe.utils.escape_html(row.summary || "")}</div>
+									<details>
+										<summary style="cursor:pointer">${__("Vollständiger Traceback")}</summary>
+										<pre style="white-space:pre-wrap;margin:0;font-size:11px">${frappe.utils.escape_html(row.error || "")}</pre>
+									</details>
+								</td>
 								<td><a href="${link}" target="_blank">${__("Öffnen")}</a></td>
 							</tr>`;
 						})

@@ -533,8 +533,15 @@ def list_recent_errors(limit=100):
 		limit_page_length=frappe.utils.cint(limit) or 100,
 	)
 	for row in rows:
-		if row.error and len(row.error) > 2000:
-			row.error = row.error[:2000] + "\n... (gekürzt, vollständig im Fehlerprotokoll)"
+		error_text = row.error or ""
+		# Bei einem Python-Traceback steht die eigentliche Fehlermeldung (Exception-
+		# Typ + Text) immer in der letzten nicht-leeren Zeile - nicht am Anfang. Eine
+		# reine Kürzung auf die ersten N Zeichen (wie zuvor) zeigte daher nur den
+		# Aufrufpfad und schnitt genau die eigentliche Ursache ab.
+		lines = [line for line in error_text.strip().splitlines() if line.strip()]
+		row.summary = lines[-1] if lines else ""
+		if len(error_text) > 3000:
+			row.error = "... (Anfang gekürzt, vollständig über 'Öffnen') ...\n" + error_text[-3000:]
 	return rows
 
 
