@@ -19,6 +19,64 @@ function show_phonebook_sync_result(res) {
 	});
 }
 
+function show_cdr_repair_result(res, { offer_apply } = {}) {
+	const diff_line = (label, before, after, key) =>
+		before[key] !== after[key]
+			? `<div>${label}: <s>${frappe.utils.escape_html(before[key] || "-")}</s> → <b>${frappe.utils.escape_html(after[key] || "-")}</b></div>`
+			: "";
+	const rows = (res.changed || [])
+		.map((c) => {
+			const link = `/app/webex-call-log/${encodeURIComponent(c.name)}`;
+			return `<tr>
+				<td><a href="${link}" target="_blank">${frappe.utils.escape_html(c.name)}</a></td>
+				<td>
+					${diff_line(__("Richtung"), c.before, c.after, "direction")}
+					${diff_line(__("Status"), c.before, c.after, "status")}
+					${diff_line(__("Kunde"), c.before, c.after, "customer")}
+					${diff_line(__("Kontakt"), c.before, c.after, "contact")}
+					${diff_line(__("Interessent"), c.before, c.after, "lead")}
+				</td>
+			</tr>`;
+		})
+		.join("");
+
+	const summary = __("Geprüft: {0} · Änderungen: {1} · ohne Rohdaten übersprungen: {2}", [
+		res.checked || 0,
+		res.changed_count || 0,
+		res.skipped_no_payload || 0,
+	]);
+
+	const dialog = new frappe.ui.Dialog({
+		title: res.dry_run ? __("Vorschau: CDR-Datensätze korrigieren") : __("CDR-Korrektur angewendet"),
+		size: "large",
+		fields: [
+			{
+				fieldtype: "HTML",
+				options: `<p>${summary}</p><div style="max-height:55vh;overflow:auto"><table class="table table-bordered">
+					<thead><tr><th>${__("Datensatz")}</th><th>${__("Änderungen")}</th></tr></thead>
+					<tbody>${rows || `<tr><td colspan="2">${__("Keine Änderungen nötig.")}</td></tr>`}</tbody>
+				</table></div>`,
+			},
+		],
+	});
+
+	if (offer_apply && res.changed_count) {
+		dialog.set_primary_action(__("Jetzt anwenden"), () => {
+			frappe.call({
+				method: "erpnext_webex_integration.api.repair_cdr_call_logs",
+				args: { dry_run: 0 },
+				freeze: true,
+				callback: (r2) => {
+					dialog.hide();
+					show_cdr_repair_result(r2.message || {});
+				},
+			});
+		});
+	}
+
+	dialog.show();
+}
+
 function show_call_history_result(res) {
 	if (res.status === "error") {
 		frappe.msgprint({ title: __("Abruf fehlgeschlagen"), message: res.message, indicator: "red" });
@@ -225,6 +283,17 @@ frappe.ui.form.on("Webex Settings", {
 							indicator: "blue",
 						});
 					}
+				},
+			});
+		}, __("Anrufprotokoll"));
+
+		frm.add_custom_button(__("Bestehende CDR-Datensätze korrigieren"), () => {
+			frappe.call({
+				method: "erpnext_webex_integration.api.repair_cdr_call_logs",
+				args: { dry_run: 1 },
+				freeze: true,
+				callback: (r) => {
+					show_cdr_repair_result(r.message || {}, { offer_apply: true });
 				},
 			});
 		}, __("Anrufprotokoll"));

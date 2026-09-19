@@ -456,6 +456,19 @@ def pull_call_history_now():
 
 
 @frappe.whitelist()
+def repair_cdr_call_logs(dry_run=False):
+	"""Korrigiert bestehende, per CDR-Abruf erstellte Webex Call Logs nachträglich
+	(Richtung/Status/Zuordnung), die vor dem entsprechenden Bugfix mit falschen
+	Werten gespeichert wurden - reine lokale Neuberechnung anhand des bereits
+	gespeicherten raw_payload, ohne erneuten Webex-API-Aufruf. Mit dry_run=1 wird
+	nur berechnet und zurückgemeldet, was sich ändern würde, ohne zu speichern."""
+	frappe.only_for("System Manager")
+	from erpnext_webex_integration.tasks import repair_cdr_call_logs as _repair_cdr_call_logs
+
+	return _repair_cdr_call_logs(dry_run=frappe.utils.cint(dry_run))
+
+
+@frappe.whitelist()
 def import_brand_lines_from_webex():
 	"""Liest alle Rufnummern der Organisation und legt/aktualisiert daraus
 	"Webex Brand Line"-Einträge an.

@@ -269,6 +269,89 @@ def _create_call_log_from_cdr(record, settings):
 		call_log.save(ignore_permissions=True)
 
 
+def repair_cdr_call_logs(dry_run=False):
+	"""Wertet bei allen bestehenden, per CDR-Abruf erstellten Webex Call Logs den
+	gespeicherten raw_payload erneut aus und korrigiert Richtung/Status/Zuordnung
+	anhand der reparierten Logik aus _create_call_log_from_cdr() - noetig, weil vor
+	diesem Fix JEDER per CDR importierte Anruf mit falscher Richtung ("Ausgehend"
+	statt ggf. "Eingehend", da Webex' Direction-Werte ORIGINATING/TERMINATING statt
+	INCOMING/OUTGOING sind) und Status verpasster Anrufe faelschlich als "Beendet"
+	statt "Verpasst" gespeichert wurde. Reine lokale Neuberechnung ohne
+	Webex-API-Aufrufe (raw_payload enthaelt bereits alles Noetige), daher synchron
+	schnell genug fuer einen manuellen Button-Klick - kein Hintergrundjob noetig.
+
+	Ueberschreibt Kunde/Kontakt/Interessent nur, wenn die Neuberechnung tatsaechlich
+	etwas findet (`or` mit dem bisherigen Wert) - ein bereits korrekt zugeordneter
+	Datensatz wird also nie durch ein Nicht-Ergebnis geleert."""
+	names = frappe.get_all("Webex Call Log", filters={"source": "CDR-Abruf"}, pluck="name")
+
+	changed = []
+	skipped_no_payload = 0
+
+	for name in names:
+		call_log = frappe.get_doc("Webex Call Log", name)
+		if not call_log.raw_payload:
+			skipped_no_payload += 1
+			continue
+		try:
+			record = json.loads(call_log.raw_payload)
+		except ValueError:
+			skipped_no_payload += 1
+			continue
+
+		before = {
+			"direction": call_log.direction,
+			"status": call_log.status,
+			"customer": call_log.customer,
+			"contact": call_log.contact,
+			"lead": call_log.lead,
+		}
+
+		direction_raw = (record.get("Direction") or record.get("direction") or "").lower()
+		is_incoming = "terminating" in direction_raw or "incoming" in direction_raw
+		call_log.direction = "Eingehend" if is_incoming else "Ausgehend"
+
+		answer_time = record.get("Answer time") or record.get("answerTime")
+		# "Abgelehnt" kennt der CDR-Datensatz nicht (nur verbunden/nicht angenommen)
+		# - ein evtl. so gesetzter Status bleibt daher unangetastet.
+		if call_log.status != "Abgelehnt":
+			call_log.status = "Verbunden" if answer_time else "Verpasst"
+
+		from_number = record.get("Calling number") or record.get("callingNumber") or call_log.from_number
+		to_number = record.get("Called number") or record.get("calledNumber") or call_log.to_number
+		lookup_number = from_number if is_incoming else to_number
+		match = utils.find_party_by_phone(lookup_number) if lookup_number else None
+		if match:
+			call_log.customer = match.get("customer") or call_log.customer
+			call_log.contact = match.get("contact") or call_log.contact
+			call_log.lead = match.get("lead") or call_log.lead
+
+		after = {
+			"direction": call_log.direction,
+			"status": call_log.status,
+			"customer": call_log.customer,
+			"contact": call_log.contact,
+			"lead": call_log.lead,
+		}
+
+		if before != after:
+			changed.append({"name": name, "before": before, "after": after})
+			if not dry_run:
+				call_log.save(ignore_permissions=True)
+
+	if not dry_run and changed:
+		frappe.db.commit()
+
+	return {
+		"status": "ok",
+		"dry_run": bool(dry_run),
+		"checked": len(names),
+		"changed_count": len(changed),
+		"changed": changed,
+		"skipped_no_payload": skipped_no_payload,
+	}
+
+
 def _find_recent_call_log_by_number_and_time(number, start_time, tolerance_minutes=3):
 	"""Fallback-Abgleich, falls Webhook und CDR unterschiedliche IDs fuer denselben
 	Anruf verwenden: gleiche Rufnummer der Gegenseite und Anrufbeginn innerhalb
