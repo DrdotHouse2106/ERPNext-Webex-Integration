@@ -23,6 +23,13 @@ MAX_CDR_WINDOW_MINUTES = 720  # Webex Detailed Call History: max. 12h Zeitfenste
 # diese API also gar nicht abrufbar, ein groesserer Lookback wird daher automatisch
 # auf diese Grenze gekappt statt mit einem Fehler abzubrechen.
 MAX_CDR_LOOKBACK_HOURS = 720
+# Sicherheitspuffer für die 720h-Grenze: zwischen der Berechnung von start_time
+# und dem Moment, in dem Webex die Anfrage tatsaechlich auswertet, vergeht Zeit
+# (Netzwerklatenz, Rate-Limit-Retries mit Wartezeit) - ohne Puffer reichte schon
+# 1 Minute Differenz zum genauen 720h-Limit, um trotzdem mit "Start time is older
+# than 720 hours" abgelehnt zu werden (live beobachtet bei einem Lookback von
+# 43199 Minuten, nur 1 Minute unter dem theoretischen Maximum).
+CDR_LOOKBACK_SAFETY_MARGIN_MINUTES = 60
 # Sicherheitsmarge unter dem RQ-Job-Timeout der "long"-Warteschlange (auf Frappe
 # Cloud i.d.R. 1500s) - bei einem grossen Rueckstand (z.B. Wochen an CDR-Haeppchen
 # oder tausende Telefonbuch-Eintraege) wird die Arbeit stattdessen sauber
@@ -110,7 +117,9 @@ def pull_call_history(force=False):
 	# nicht mehr abrufbar (weder ueber einen grossen Lookback noch ueber einen
 	# lange nicht gelaufenen last_call_history_sync-Stand) - auf die Grenze kappen
 	# statt mit "Start time is older than 720 hours" abzubrechen.
-	oldest_allowed_start = end_time - timedelta(hours=MAX_CDR_LOOKBACK_HOURS)
+	oldest_allowed_start = end_time - timedelta(hours=MAX_CDR_LOOKBACK_HOURS) + timedelta(
+		minutes=CDR_LOOKBACK_SAFETY_MARGIN_MINUTES
+	)
 	if start_time < oldest_allowed_start:
 		start_time = oldest_allowed_start
 
@@ -784,7 +793,9 @@ def sync_single_customer(customer_name, client=None, settings=None):
 	if not entry:
 		return
 
-	payload = _build_organization_contact_payload(entry["display_name"], entry["phone_numbers"])
+	payload = _build_organization_contact_payload(
+		entry["display_name"], entry["phone_numbers"], for_update=bool(entry["webex_contact_id"])
+	)
 
 	if entry["webex_contact_id"]:
 		client.update_organization_contact(entry["webex_contact_id"], payload)
@@ -808,6 +819,7 @@ def sync_single_contact(contact_name, client=None, settings=None):
 		entry["phone_numbers"],
 		first_name=entry.get("first_name"),
 		last_name=entry.get("last_name"),
+		for_update=bool(entry["webex_contact_id"]),
 	)
 
 	if entry["webex_contact_id"]:
@@ -833,7 +845,7 @@ def _get_brand_abbr(customer_name, settings):
 	return frappe.db.get_value("Webex Brand Line", {"erp_brand_value": brand_value}, "abbreviation") or ""
 
 
-def _build_organization_contact_payload(display_name, phone_numbers, first_name=None, last_name=None):
+def _build_organization_contact_payload(display_name, phone_numbers, first_name=None, last_name=None, for_update=False):
 	# Schema anhand echter Antwortdaten aus dem eigenen Tenant verifiziert
 	# (schemas: "urn:cisco:codev:identity:contact:core:1.0"): firstName/lastName
 	# liegen direkt auf oberster Ebene, nicht verschachtelt unter "name". Ein
@@ -853,17 +865,24 @@ def _build_organization_contact_payload(display_name, phone_numbers, first_name=
 	# mit 403 "Source null is not supported by organization, only sources [CH]
 	# are allowed" ab. "CH" (Control Hub) ist laut Fehlermeldung der einzige für
 	# diese Organisation zulässige Wert.
+	# WICHTIG (asymmetrisch zwischen Anlegen und Aktualisieren): "contactType" ist
+	# beim Anlegen (POST) Pflicht, muss beim Aktualisieren (PATCH) aber FEHLEN -
+	# sonst 400 "Null.orgContactBean.contactType -> must be null" (mit echter
+	# Fehlermeldung des eigenen Tenants verifiziert). for_update=True lässt das
+	# Feld daher weg.
 	# phone_numbers: Liste von {"value": ..., "type": "mobile"|"work"} - i.d.R. Mobil
 	# UND Festnetz, falls beide am Kunden/Kontakt hinterlegt sind.
-	return {
+	payload = {
 		"schemas": "urn:cisco:codev:identity:contact:core:1.0",
 		"source": "CH",
-		"contactType": "CUSTOM",
 		"displayName": display_name,
 		"firstName": first_name or display_name,
 		"lastName": last_name or "",
 		"phoneNumbers": [{"value": p["value"], "type": p["type"]} for p in phone_numbers],
 	}
+	if not for_update:
+		payload["contactType"] = "CUSTOM"
+	return payload
 
 
 # ----------------------------------------------------------------------

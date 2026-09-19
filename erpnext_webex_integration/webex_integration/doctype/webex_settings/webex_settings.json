@@ -161,7 +161,7 @@
   },
   {
    "default": "60",
-   "description": "Zeitraum, der bei jedem Abruf rückwirkend abgefragt wird. Webex erlaubt hier maximal 720 Stunden (30 Tage, = 43200 Minuten) in die Vergangenheit - ein größerer Wert wird automatisch auf diese Grenze gekappt, ältere Daten sind über diese API nicht mehr abrufbar.",
+   "description": "Zeitraum, der bei jedem Abruf rückwirkend abgefragt wird. Webex erlaubt hier maximal 720 Stunden (30 Tage, = 43200 Minuten) in die Vergangenheit - ein größerer Wert wird automatisch (inkl. einer Sicherheitsmarge von 60 Minuten) auf diese Grenze gekappt, ältere Daten sind über diese API nicht mehr abrufbar.",
    "fieldname": "call_history_lookback_minutes",
    "fieldtype": "Int",
    "label": "Abrufzeitraum (Minuten)"
