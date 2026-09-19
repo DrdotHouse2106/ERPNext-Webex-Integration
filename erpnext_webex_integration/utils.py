@@ -1,8 +1,25 @@
 """Hilfsfunktionen: Telefonnummern normalisieren und zu Kunde/Kontakt zuordnen."""
 
 import re
+from datetime import timezone
 
 import frappe
+
+
+def parse_datetime_naive(value):
+	"""Wandelt einen Webex-Zeitstempel (String oder datetime, meist mit Zeitzone
+	wie "Z"/"+00:00") in ein naives UTC-Datetime um.
+
+	Wichtig: Frappes Datetime-Felder landen als MySQL DATETIME-Spalte, die keine
+	Zeitzonen-Suffixe unterstuetzt. Ein direkt aus einem zeitzonenbewussten String
+	geparster Wert (z.B. ueber frappe.utils.get_datetime()) fuehrt beim Speichern
+	sonst zu "Incorrect datetime value: '...+00:00'" (MySQLdb.OperationalError)."""
+	if not value:
+		return None
+	dt = frappe.utils.get_datetime(value)
+	if dt and dt.tzinfo is not None:
+		dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+	return dt
 
 
 def normalize_phone_number(number, default_country_code="+49"):

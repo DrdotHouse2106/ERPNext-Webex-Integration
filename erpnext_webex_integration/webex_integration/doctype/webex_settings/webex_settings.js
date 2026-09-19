@@ -222,5 +222,39 @@ frappe.ui.form.on("Webex Settings", {
 				},
 			});
 		}, __("Debug"));
+
+		frm.add_custom_button(__("Fehlerprotokoll anzeigen"), () => {
+			frappe.call({
+				method: "erpnext_webex_integration.api.list_recent_errors",
+				freeze: true,
+				callback: (r) => {
+					const rows = r.message || [];
+					if (!rows.length) {
+						frappe.msgprint(__("Keine Webex-bezogenen Fehler im Protokoll gefunden."));
+						return;
+					}
+					const body = rows
+						.map((row) => {
+							const link = `/app/error-log/${encodeURIComponent(row.name)}`;
+							return `<tr>
+								<td style="white-space:nowrap">${frappe.datetime.str_to_user(row.creation)}</td>
+								<td>${frappe.utils.escape_html(row.title || "")}</td>
+								<td><pre style="white-space:pre-wrap;margin:0;font-size:11px">${frappe.utils.escape_html((row.error || "").slice(0, 500))}</pre></td>
+								<td><a href="${link}" target="_blank">${__("Öffnen")}</a></td>
+							</tr>`;
+						})
+						.join("");
+					frappe.msgprint({
+						title: __("Letzte Webex-Fehler ({0})", [rows.length]),
+						wide: true,
+						message: `<div style="max-height:65vh;overflow:auto"><table class="table table-bordered">
+							<thead><tr><th>Zeitpunkt</th><th>Titel</th><th>Meldung</th><th></th></tr></thead>
+							<tbody>${body}</tbody>
+						</table></div>`,
+						indicator: "red",
+					});
+				},
+			});
+		}, __("Debug"));
 	},
 });

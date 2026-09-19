@@ -192,7 +192,9 @@ def _create_call_log_from_cdr(record, settings):
 		existing_name = frappe.db.get_value("Webex Call Log", {"call_id": call_id})
 	if not existing_name and start_time:
 		lookup_number = to_number if "incoming" in direction_raw else from_number
-		existing_name = _find_recent_call_log_by_number_and_time(lookup_number, get_datetime(start_time))
+		existing_name = _find_recent_call_log_by_number_and_time(
+			lookup_number, utils.parse_datetime_naive(start_time)
+		)
 
 	is_new = not existing_name
 	call_log = (
@@ -213,7 +215,11 @@ def _create_call_log_from_cdr(record, settings):
 	call_log.from_number = call_log.from_number or from_number
 	call_log.to_number = call_log.to_number or to_number
 	if start_time and not call_log.start_time:
-		call_log.start_time = get_datetime(start_time)
+		# utils.parse_datetime_naive() statt get_datetime(): Webex liefert den
+		# Zeitstempel mit Zeitzonen-Suffix, das ergibt ein zeitzonenbewusstes
+		# datetime-Objekt - MySQLs DATETIME-Spalte lehnt das beim Speichern mit
+		# "Incorrect datetime value: '...+00:00'" ab (siehe utils.py).
+		call_log.start_time = utils.parse_datetime_naive(start_time)
 	if not call_log.duration_seconds:
 		try:
 			call_log.duration_seconds = int(duration)

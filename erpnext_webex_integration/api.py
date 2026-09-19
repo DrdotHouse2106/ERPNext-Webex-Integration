@@ -131,14 +131,17 @@ def _handle_call_webhook_payload(payload):
 			call_log.from_number = call_log.from_number or remote_number
 
 	if data.get("created") and not call_log.start_time:
-		call_log.start_time = get_datetime(data["created"])
+		call_log.start_time = utils.parse_datetime_naive(data["created"])
 	if data.get("disconnected"):
-		call_log.end_time = get_datetime(data["disconnected"])
+		call_log.end_time = utils.parse_datetime_naive(data["disconnected"])
 
 	duration_start = data.get("answered") or data.get("created")
 	if duration_start and data.get("disconnected"):
 		call_log.duration_seconds = int(
-			(get_datetime(data["disconnected"]) - get_datetime(duration_start)).total_seconds()
+			(
+				utils.parse_datetime_naive(data["disconnected"])
+				- utils.parse_datetime_naive(duration_start)
+			).total_seconds()
 		)
 
 	# Bestes-Bemuehen-Anreicherung ueber die Call-Details-API (kann fehlschlagen,
@@ -507,6 +510,32 @@ def debug_caller_id_settings():
 		return client.get_caller_id_settings(person_id)
 	except WebexAPIError as exc:
 		frappe.throw(str(exc))
+
+
+@frappe.whitelist()
+def list_recent_errors(limit=100):
+	"""Liefert die letzten Fehler dieser Integration aus dem Standard-Fehlerprotokoll
+	(Error Log), gefiltert auf Einträge, deren Titel mit "Webex" beginnt - so muss man
+	zur Fehlersuche nicht erst im allgemeinen Fehlerprotokoll danach suchen.
+
+	Der Titel-Feldname im Error-Log-Doctype hieß je nach Frappe-Version "method" oder
+	"title" - wird daher dynamisch ermittelt statt fest anzunehmen."""
+	frappe.only_for("System Manager")
+
+	meta = frappe.get_meta("Error Log")
+	title_field = "title" if meta.has_field("title") else "method"
+
+	rows = frappe.get_all(
+		"Error Log",
+		filters={title_field: ["like", "Webex%"]},
+		fields=["name", "creation", f"{title_field} as title", "error"],
+		order_by="creation desc",
+		limit_page_length=frappe.utils.cint(limit) or 100,
+	)
+	for row in rows:
+		if row.error and len(row.error) > 2000:
+			row.error = row.error[:2000] + "\n... (gekürzt, vollständig im Fehlerprotokoll)"
+	return rows
 
 
 # ----------------------------------------------------------------------
