@@ -219,9 +219,12 @@ class WebexClient:
 		)
 
 	def update_organization_contact(self, contact_id, payload, org_id=None):
+		# Webex lehnt PUT hier mit 405 "Request method 'PUT' is not supported" ab -
+		# nur PATCH wird fuer dieses Endpoint unterstuetzt (mit echter Fehlermeldung
+		# des eigenen Tenants bestaetigt).
 		org_id = self._require_org_id(org_id or self.settings.org_id)
 		return self._request(
-			"PUT",
+			"PATCH",
 			f"{self.contacts_base_url}/contacts/organizations/{org_id}/contacts/{contact_id}",
 			json=payload,
 		)
