@@ -195,7 +195,14 @@ def _create_call_log_from_cdr(record, settings):
 
 	from_number = record.get("Calling number") or record.get("callingNumber")
 	to_number = record.get("Called number") or record.get("calledNumber")
+	# Webex' CDR-Feld "Direction" verwendet (wie "personality" im Webhook-Payload)
+	# die Werte ORIGINATING/TERMINATING statt INCOMING/OUTGOING - ein Vergleich auf
+	# "incoming" traf daher NIE zu, wodurch bislang jeder CDR-Datensatz faelschlich
+	# als "Ausgehend" gespeichert wurde (mit echten Rohdaten bestaetigt: Direction
+	# "TERMINATING" bei einem tatsaechlich eingehenden Anruf). TERMINATING = bei uns
+	# eingehend (der Anruf endet/terminiert bei uns), ORIGINATING = ausgehend.
 	direction_raw = (record.get("Direction") or record.get("direction") or "").lower()
+	is_incoming = "terminating" in direction_raw or "incoming" in direction_raw
 	duration = record.get("Duration") or record.get("duration") or 0
 	start_time = record.get("Start time") or record.get("startTime")
 	answer_time = record.get("Answer time") or record.get("answerTime")
@@ -206,7 +213,10 @@ def _create_call_log_from_cdr(record, settings):
 	if not existing_name and call_id:
 		existing_name = frappe.db.get_value("Webex Call Log", {"call_id": call_id})
 	if not existing_name and start_time:
-		lookup_number = to_number if "incoming" in direction_raw else from_number
+		# Die Nummer der Gegenseite (Kunde) ist bei einem eingehenden Anruf die
+		# anrufende Nummer (from_number), bei einem ausgehenden die angerufene
+		# (to_number) - nicht umgekehrt.
+		lookup_number = from_number if is_incoming else to_number
 		existing_name = _find_recent_call_log_by_number_and_time(
 			lookup_number, utils.parse_datetime_naive(start_time)
 		)
@@ -222,11 +232,15 @@ def _create_call_log_from_cdr(record, settings):
 		call_log.call_session_id = call_session_id
 	if is_new:
 		call_log.source = "CDR-Abruf"
-		call_log.direction = "Eingehend" if "incoming" in direction_raw else "Ausgehend"
-	if answer_time and call_log.status in (None, "", "Klingelt", "Beendet"):
-		call_log.status = "Verbunden"
-	elif not answer_time and call_log.status in (None, "", "Klingelt"):
-		call_log.status = "Verpasst"
+		call_log.direction = "Eingehend" if is_incoming else "Ausgehend"
+	# CDR-Datensaetze beschreiben immer einen bereits abgeschlossenen Anruf, das
+	# Ergebnis (verbunden/verpasst) steht also zweifelsfrei fest - anders als beim
+	# Webhook, der einen laufenden Anruf schrittweise verfolgt. Direkt setzen statt
+	# ueber einen Statusvergleich: der Vergleich `status in (None, "", "Klingelt")`
+	# griff bisher nie, da das Select-Feld "status" standardmaessig bereits auf
+	# "Beendet" steht (Doctype-Default) - dadurch blieben verpasste Anrufe
+	# faelschlich auf "Beendet" statt auf "Verpasst" stehen.
+	call_log.status = "Verbunden" if answer_time else "Verpasst"
 	call_log.from_number = call_log.from_number or from_number
 	call_log.to_number = call_log.to_number or to_number
 	if start_time and not call_log.start_time:
@@ -242,7 +256,7 @@ def _create_call_log_from_cdr(record, settings):
 			pass
 	call_log.raw_payload = json.dumps(record, indent=2, default=str)
 
-	lookup_number = to_number if call_log.direction == "Eingehend" else from_number
+	lookup_number = from_number if call_log.direction == "Eingehend" else to_number
 	match = utils.find_party_by_phone(lookup_number) if lookup_number else None
 	if match:
 		call_log.customer = call_log.customer or match.get("customer")
@@ -540,12 +554,16 @@ def _build_organization_contact_payload(display_name, phone_numbers, first_name=
 	# schemas -> must not be null" ab. WICHTIG: "schemas" ist hier (anders als im
 	# SCIM-Standard sonst üblich) ein einzelner String, kein Array - ein Array
 	# führte zu 400 "Cannot deserialize value of type java.lang.String from Array
-	# value" (mit echten Antwortdaten des eigenen Tenants verifiziert).
+	# value" (mit echten Antwortdaten des eigenen Tenants verifiziert). "contactType"
+	# ist ein Enum mit fest vorgegebenen Werten (laut Fehlermeldung bei ungültigem
+	# Wert: HIDDEN_USER_CUSTOM, HIDDEN_ORG_CUSTOM, LOCALLDAP, ORG_CONTACT, CUSTOM,
+	# CLOUD, CORPORATE) - "person" ist dort NICHT gültig. "CUSTOM" passt für einen
+	# manuell/automatisiert angelegten Telefonbuch-Eintrag (kein LDAP-/Cloud-Nutzer).
 	# phone_numbers: Liste von {"value": ..., "type": "mobile"|"work"} - i.d.R. Mobil
 	# UND Festnetz, falls beide am Kunden/Kontakt hinterlegt sind.
 	return {
 		"schemas": "urn:cisco:codev:identity:contact:core:1.0",
-		"contactType": "person",
+		"contactType": "CUSTOM",
 		"displayName": display_name,
 		"firstName": first_name or display_name,
 		"lastName": last_name or "",

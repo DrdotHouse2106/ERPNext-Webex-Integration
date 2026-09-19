@@ -149,8 +149,12 @@ def _handle_call_webhook_payload(payload):
 	# bereits aus dem Webhook-Payload bekannten Daten).
 	_enrich_from_call_details(call_log, call_id)
 
+	# Fallback nur falls remote_number fehlt: die Nummer der Gegenseite (Kunde) ist
+	# bei einem eingehenden Anruf die anrufende Nummer (from_number), bei einem
+	# ausgehenden die angerufene (to_number) - nicht umgekehrt (siehe derselbe Bug
+	# in tasks.py::_create_call_log_from_cdr, mit echten CDR-Daten bestätigt).
 	lookup_number = remote_number or (
-		call_log.to_number if call_log.direction == "Eingehend" else call_log.from_number
+		call_log.from_number if call_log.direction == "Eingehend" else call_log.to_number
 	)
 	if lookup_number:
 		match = utils.find_party_by_phone(lookup_number)
