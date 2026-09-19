@@ -608,12 +608,36 @@ def _phonebook_sync_due(settings):
 
 
 def _customers_with_phone():
+	"""Liefert alle Kunden mit mindestens einer Rufnummer - entweder direkt am
+	Customer-Datensatz (mobile_no/phone_no) ODER am verknüpften (Haupt-)Kontakt
+	(Contact Phone). Nur die erste Quelle zu prüfen ließ bislang einen Großteil der
+	Kunden fälschlich als "ohne Rufnummer" durchfallen, wenn die Nummer (wie bei
+	vielen Kunden hier üblich) nur am Kontakt und nicht am Customer selbst
+	hinterlegt ist - utils.get_all_phones() (beim eigentlichen Sync verwendet)
+	berücksichtigt beide Quellen längst, diese Vorauswahl bisher nicht."""
 	meta = frappe.get_meta("Customer")
-	phone_fields = [f for f in ("mobile_no", "phone_no") if meta.has_field(f)]
-	if not phone_fields:
-		return []
-	conditions = " or ".join(f"{f} is not null and {f} != ''" for f in phone_fields)
-	return frappe.db.sql_list(f"select name from `tabCustomer` where {conditions} and disabled = 0")
+	own_phone_fields = [f for f in ("mobile_no", "phone_no") if meta.has_field(f)]
+
+	names = set()
+	if own_phone_fields:
+		conditions = " or ".join(f"{f} is not null and {f} != ''" for f in own_phone_fields)
+		names.update(frappe.db.sql_list(f"select name from `tabCustomer` where {conditions} and disabled = 0"))
+
+	linked_with_phone = frappe.db.sql(
+		"""
+		select distinct dl.link_name
+		from `tabDynamic Link` dl
+		inner join `tabContact Phone` cp on cp.parent = dl.parent
+		inner join `tabCustomer` c on c.name = dl.link_name
+		where dl.parenttype = 'Contact'
+		  and dl.link_doctype = 'Customer'
+		  and cp.phone is not null and cp.phone != ''
+		  and c.disabled = 0
+		"""
+	)
+	names.update(row[0] for row in linked_with_phone)
+
+	return list(names)
 
 
 def _contacts_with_phone():
@@ -672,19 +696,35 @@ def build_contact_sync_entry(contact_name, settings=None):
 	if not phone_numbers:
 		return None
 
-	customer_name = frappe.db.get_value(
+	# Nicht nur an Customer verknuepfte Kontakte beruecksichtigen, sondern auch an
+	# Supplier (z.B. "Hauptkontakt <Lieferant>") - sonst griff hier faelschlich der
+	# "kein verknuepfter Datensatz"-Fallback (voller Kontaktname doppelt inkl.
+	# Frappes automatischem Eindeutigkeits-Suffix, z.B. "Hauptkontakt X
+	# (Hauptkontakt X-715316)"), obwohl der Kontakt sehr wohl verknuepft ist.
+	link = frappe.db.get_value(
 		"Dynamic Link",
-		{"parenttype": "Contact", "parent": contact_name, "link_doctype": "Customer"},
-		"link_name",
+		{"parenttype": "Contact", "parent": contact_name, "link_doctype": ["in", ["Customer", "Supplier"]]},
+		["link_doctype", "link_name"],
+		as_dict=True,
 	)
+	party_name = link.link_name if link else None
 	full_name = " ".join(filter(None, [contact.first_name, contact.last_name])) or contact.name
-	display_name = (settings.contact_display_format or "{customer_name} ({customer_id})").format(
-		customer_name=customer_name or full_name,
-		customer_id=customer_name or contact.name,
-		first_name=contact.first_name or "",
-		last_name=contact.last_name or "",
-		brand_abbr=_get_brand_abbr(customer_name, settings) if customer_name else "",
-	)
+
+	if party_name:
+		display_name = (settings.contact_display_format or "{customer_name} ({customer_id})").format(
+			customer_name=party_name,
+			customer_id=party_name,
+			first_name=contact.first_name or "",
+			last_name=contact.last_name or "",
+			# Marken-Anrufer-ID ist ein reines Customer-Konzept (customer_brand_fieldname
+			# in Webex Settings) - bei einem Supplier-Link ergibt der Abgleich nichts.
+			brand_abbr=_get_brand_abbr(party_name, settings) if link.link_doctype == "Customer" else "",
+		)
+	else:
+		# Wirklich unverknuepfter Kontakt: das Anzeigeformat wuerde hier ohnehin nur
+		# den vollen Namen doppelt (einmal als "Kunde", einmal als "Kunden-ID" samt
+		# Frappes Eindeutigkeits-Suffix) anzeigen - daher schlicht der Name allein.
+		display_name = full_name
 	existing_id = contact.get("webex_contact_id")
 	return {
 		"doctype": "Contact",
