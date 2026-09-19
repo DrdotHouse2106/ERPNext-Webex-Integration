@@ -17,6 +17,12 @@ FREQUENCY_TO_TIMEDELTA = {
 
 WEBEX_TOKEN_URL = "https://webexapis.com/v1/access_token"
 MAX_CDR_WINDOW_MINUTES = 720  # Webex Detailed Call History: max. 12h Zeitfenster pro Anfrage
+# Webex lehnt einen Startzeitpunkt, der mehr als 720 Stunden (30 Tage) in der
+# Vergangenheit liegt, grundsaetzlich ab (400 "Start time is older than 720
+# hours") - unabhaengig von der 12h-Haeppchen-Aufteilung. Aeltere Daten sind ueber
+# diese API also gar nicht abrufbar, ein groesserer Lookback wird daher automatisch
+# auf diese Grenze gekappt statt mit einem Fehler abzubrechen.
+MAX_CDR_LOOKBACK_HOURS = 720
 # Sicherheitsmarge unter dem RQ-Job-Timeout der "long"-Warteschlange (auf Frappe
 # Cloud i.d.R. 1500s) - bei einem grossen Rueckstand (z.B. Wochen an CDR-Haeppchen
 # oder tausende Telefonbuch-Eintraege) wird die Arbeit stattdessen sauber
@@ -99,6 +105,14 @@ def pull_call_history(force=False):
 	start_time = get_datetime(settings.last_call_history_sync) if settings.last_call_history_sync else None
 	if force or not start_time or start_time >= end_time:
 		start_time = end_time - timedelta(minutes=lookback_minutes)
+
+	# Siehe MAX_CDR_LOOKBACK_HOURS: alles vor dieser Grenze ist bei Webex ohnehin
+	# nicht mehr abrufbar (weder ueber einen grossen Lookback noch ueber einen
+	# lange nicht gelaufenen last_call_history_sync-Stand) - auf die Grenze kappen
+	# statt mit "Start time is older than 720 hours" abzubrechen.
+	oldest_allowed_start = end_time - timedelta(hours=MAX_CDR_LOOKBACK_HOURS)
+	if start_time < oldest_allowed_start:
+		start_time = oldest_allowed_start
 
 	# Webex erlaubt pro Anfrage nur ein Zeitfenster von max. 12 Stunden - bei einem
 	# groesseren Abrufzeitraum (z.B. fuer einen einmaligen Rueckstands-Abruf) wird
