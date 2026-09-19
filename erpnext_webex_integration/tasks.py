@@ -292,7 +292,16 @@ def _create_call_log_from_cdr(record, settings):
 		call_log.call_session_id = call_session_id
 	if is_new:
 		call_log.source = "CDR-Abruf"
-		call_log.direction = "Eingehend" if is_incoming else "Ausgehend"
+	# Richtung IMMER aus dem aktuellen CDR-Datensatz setzen, nicht nur bei einem
+	# neuen Eintrag: wird derselbe Anruf bei einem spaeteren Abruf erneut gefunden
+	# (gleiche call_session_id/call_id - z.B. weil sich Abrufzeitraeume
+	# ueberschneiden, oder weil er urspruenglich noch mit der alten, fehlerhaften
+	# Richtungserkennung angelegt wurde), blieb die Richtung bisher dauerhaft
+	# falsch stehen, da sie nur im is_new-Zweig gesetzt wurde. CDR ist fuer einen
+	# abgeschlossenen Anruf ohnehin die massgebliche Quelle, ein erneutes Setzen
+	# ist daher immer korrekt (kein Risiko, eine korrekte Webhook-Richtung zu
+	# ueberschreiben - beide Quellen muessen bei richtiger Auswertung uebereinstimmen).
+	call_log.direction = "Eingehend" if is_incoming else "Ausgehend"
 	# CDR-Datensaetze beschreiben immer einen bereits abgeschlossenen Anruf, das
 	# Ergebnis (verbunden/verpasst) steht also zweifelsfrei fest - anders als beim
 	# Webhook, der einen laufenden Anruf schrittweise verfolgt. Direkt setzen statt
