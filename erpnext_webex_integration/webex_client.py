@@ -23,10 +23,11 @@ import requests
 
 
 class WebexAPIError(Exception):
-	def __init__(self, message, status_code=None, response_body=None):
+	def __init__(self, message, status_code=None, response_body=None, retry_after=None):
 		super().__init__(message)
 		self.status_code = status_code
 		self.response_body = response_body
+		self.retry_after = retry_after  # Sekunden aus dem "Retry-After"-Header bei 429, falls vorhanden
 
 
 class WebexClient:
@@ -64,10 +65,20 @@ class WebexClient:
 			)
 
 		if response.status_code >= 400:
+			retry_after = None
+			if response.status_code == 429:
+				# Webex gibt bei einem Rate-Limit i.d.R. die tatsaechlich noetige
+				# Wartezeit im "Retry-After"-Header (Sekunden) mit - zuverlaessiger
+				# als eine fest verdrahtete Wartezeit zu raten.
+				try:
+					retry_after = int(response.headers.get("Retry-After"))
+				except (TypeError, ValueError):
+					retry_after = None
 			raise WebexAPIError(
 				f"Webex-API-Fehler ({response.status_code}) bei {url}: {response.text[:500]}",
 				status_code=response.status_code,
 				response_body=response.text,
+				retry_after=retry_after,
 			)
 
 		if not response.content:

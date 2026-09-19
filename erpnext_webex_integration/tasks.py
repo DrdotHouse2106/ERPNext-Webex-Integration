@@ -115,38 +115,24 @@ def pull_call_history(force=False):
 
 		window_end = min(window_start + timedelta(minutes=MAX_CDR_WINDOW_MINUTES), end_time)
 		try:
-			records = client.get_call_history(
-				_to_webex_timestamp(window_start), _to_webex_timestamp(window_end)
-			)
+			records = _fetch_cdr_chunk_with_retry(client, window_start, window_end)
 		except WebexAPIError as exc:
 			if exc.status_code == 429:
-				time.sleep(45)
-				try:
-					records = client.get_call_history(
-						_to_webex_timestamp(window_start), _to_webex_timestamp(window_end)
-					)
-				except WebexAPIError as exc2:
-					if exc2.status_code == 429:
-						# Anhaltendes Rate-Limit: bisherigen Fortschritt behalten und
-						# abbrechen, statt weiter draufzuzahlen oder alles zu verwerfen.
-						return {
-							"status": "partial",
-							"fetched": total_fetched,
-							"message": (
-								"Webex-Rate-Limit erreicht - bereits abgerufene Daten wurden "
-								"gespeichert. Bitte in ein paar Minuten erneut versuchen, dann "
-								"wird nur noch der Rest nachgeladen."
-							),
-						}
-					frappe.log_error(title="Webex Anrufprotokoll-Abruf fehlgeschlagen", message=str(exc2))
-					if force:
-						raise
-					return {"status": "error", "message": str(exc2)}
-			else:
-				frappe.log_error(title="Webex Anrufprotokoll-Abruf fehlgeschlagen", message=str(exc))
-				if force:
-					raise
-				return {"status": "error", "message": str(exc)}
+				# Anhaltendes Rate-Limit trotz mehrerer Versuche: bisherigen Fortschritt
+				# behalten und abbrechen, statt weiter draufzuzahlen oder alles zu verwerfen.
+				return {
+					"status": "partial",
+					"fetched": total_fetched,
+					"message": (
+						"Webex-Rate-Limit erreicht - bereits abgerufene Daten wurden "
+						"gespeichert. Bitte in ein paar Minuten erneut versuchen, dann "
+						"wird nur noch der Rest nachgeladen."
+					),
+				}
+			frappe.log_error(title="Webex Anrufprotokoll-Abruf fehlgeschlagen", message=str(exc))
+			if force:
+				raise
+			return {"status": "error", "message": str(exc)}
 
 		for record in records:
 			_create_call_log_from_cdr(record, settings)
@@ -165,6 +151,25 @@ def pull_call_history(force=False):
 
 def _to_webex_timestamp(dt):
 	return get_datetime(dt).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+
+def _fetch_cdr_chunk_with_retry(client, window_start, window_end, max_retries=3):
+	"""Ruft ein CDR-Zeitfenster ab; bei einem 429 (Rate-Limit) wird bis zu
+	max_retries-mal erneut versucht - nach Webex' eigener "Retry-After"-Angabe
+	(Sekunden), falls vorhanden, sonst mit steigender Wartezeit (45s, 90s, 135s).
+	Da der Abruf (seit der Umstellung auf einen Hintergrundjob) nicht mehr durch
+	einen Web-Request-Timeout begrenzt ist, kann hier grosszuegiger gewartet
+	werden, statt nach einem einzigen Versuch aufzugeben."""
+	attempt = 0
+	while True:
+		try:
+			return client.get_call_history(_to_webex_timestamp(window_start), _to_webex_timestamp(window_end))
+		except WebexAPIError as exc:
+			if exc.status_code != 429 or attempt >= max_retries:
+				raise
+			wait_seconds = exc.retry_after or (45 * (attempt + 1))
+			time.sleep(wait_seconds)
+			attempt += 1
 
 
 def run_call_history_pull_background(user):
@@ -342,12 +347,13 @@ def run_phonebook_sync_background(user):
 
 def _call_with_rate_limit_retry(func, *args, **kwargs):
 	"""Fuehrt func einmal aus; bei einem 429 (Rate-Limit) wird nach kurzer Pause
-	einmal erneut versucht, statt den Datensatz sofort als fehlgeschlagen zu werten."""
+	einmal erneut versucht, statt den Datensatz sofort als fehlgeschlagen zu werten.
+	Nutzt Webex' eigene "Retry-After"-Angabe (Sekunden), falls vorhanden."""
 	try:
 		return func(*args, **kwargs)
 	except WebexAPIError as exc:
 		if exc.status_code == 429:
-			time.sleep(10)
+			time.sleep(exc.retry_after or 10)
 			return func(*args, **kwargs)
 		raise
 
