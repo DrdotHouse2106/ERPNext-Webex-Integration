@@ -206,6 +206,10 @@ def _create_call_log_from_cdr(record, settings):
 	duration = record.get("Duration") or record.get("duration") or 0
 	start_time = record.get("Start time") or record.get("startTime")
 	answer_time = record.get("Answer time") or record.get("answerTime")
+	# "Release time" ist der Zeitpunkt, zu dem der Anruf tatsaechlich beendet wurde -
+	# es gibt kein direktes "End time"-Feld im CDR-Datensatz (mit echten Rohdaten
+	# abgeglichen: Start 07:34:56 + 130s Dauer passt exakt zu Release 07:37:12).
+	end_time_raw = record.get("Release time") or record.get("releaseTime")
 
 	existing_name = None
 	if call_session_id:
@@ -254,6 +258,13 @@ def _create_call_log_from_cdr(record, settings):
 			call_log.duration_seconds = int(duration)
 		except (TypeError, ValueError):
 			pass
+	if not call_log.end_time:
+		if end_time_raw:
+			call_log.end_time = utils.parse_datetime_naive(end_time_raw)
+		elif call_log.start_time and call_log.duration_seconds:
+			# Fallback, falls "Release time" ausnahmsweise fehlt: aus Beginn + Dauer
+			# errechnen, statt end_time einfach leer zu lassen.
+			call_log.end_time = add_to_date(call_log.start_time, seconds=call_log.duration_seconds)
 	call_log.raw_payload = json.dumps(record, indent=2, default=str)
 
 	lookup_number = from_number if call_log.direction == "Eingehend" else to_number
@@ -305,6 +316,7 @@ def repair_cdr_call_logs(dry_run=False):
 			"customer": call_log.customer,
 			"contact": call_log.contact,
 			"lead": call_log.lead,
+			"end_time": str(call_log.end_time or ""),
 		}
 
 		direction_raw = (record.get("Direction") or record.get("direction") or "").lower()
@@ -326,12 +338,20 @@ def repair_cdr_call_logs(dry_run=False):
 			call_log.contact = match.get("contact") or call_log.contact
 			call_log.lead = match.get("lead") or call_log.lead
 
+		if not call_log.end_time:
+			end_time_raw = record.get("Release time") or record.get("releaseTime")
+			if end_time_raw:
+				call_log.end_time = utils.parse_datetime_naive(end_time_raw)
+			elif call_log.start_time and call_log.duration_seconds:
+				call_log.end_time = add_to_date(call_log.start_time, seconds=call_log.duration_seconds)
+
 		after = {
 			"direction": call_log.direction,
 			"status": call_log.status,
 			"customer": call_log.customer,
 			"contact": call_log.contact,
 			"lead": call_log.lead,
+			"end_time": str(call_log.end_time or ""),
 		}
 
 		if before != after:

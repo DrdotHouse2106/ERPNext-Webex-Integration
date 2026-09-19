@@ -92,9 +92,12 @@
    "fieldtype": "Column Break"
   },
   {
+   "description": "Wird weiterhin intern in Sekunden gespeichert (fuer exakte Auswertungen), aber als Minuten:Sekunden angezeigt.",
    "fieldname": "duration_seconds",
-   "fieldtype": "Int",
-   "label": "Dauer (Sekunden)"
+   "fieldtype": "Duration",
+   "hide_days": 1,
+   "hide_hours": 1,
+   "label": "Dauer"
   },
   {
    "fieldname": "sb_numbers",

@@ -35,6 +35,7 @@ function show_cdr_repair_result(res, { offer_apply } = {}) {
 					${diff_line(__("Kunde"), c.before, c.after, "customer")}
 					${diff_line(__("Kontakt"), c.before, c.after, "contact")}
 					${diff_line(__("Interessent"), c.before, c.after, "lead")}
+					${diff_line(__("Ende"), c.before, c.after, "end_time")}
 				</td>
 			</tr>`;
 		})
