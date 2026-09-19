@@ -365,10 +365,24 @@ def _log_manual_call_start(doctype, docname, to_number):
 
 @frappe.whitelist()
 def sync_phonebook_now():
+	"""Stoesst den Telefonbuch-Sync als Hintergrundjob an, statt synchron im
+	Web-Request zu laufen - bei vielen Kunden/Kontakten (inkl. Drosselung gegen
+	das Webex-Rate-Limit) ueberschreitet das sonst den Request-Timeout
+	("Zeitüberschreitung der Anfrage"). Das Ergebnis kommt per Realtime-Event
+	("webex_phonebook_sync_done") zurueck, sobald der Job fertig ist."""
 	frappe.only_for("System Manager")
-	from erpnext_webex_integration.tasks import sync_phonebook
+	settings = frappe.get_single("Webex Settings")
+	if not settings.enabled:
+		return {"status": "skipped", "reason": "Integration ist nicht aktiviert."}
 
-	return sync_phonebook(force=True)
+	frappe.enqueue(
+		"erpnext_webex_integration.tasks.run_phonebook_sync_background",
+		queue="long",
+		job_id=f"webex-manual-phonebook-sync-{frappe.session.user}",
+		deduplicate=True,
+		user=frappe.session.user,
+	)
+	return {"status": "queued"}
 
 
 @frappe.whitelist()
@@ -417,10 +431,24 @@ def list_current_organization_contacts():
 
 @frappe.whitelist()
 def pull_call_history_now():
+	"""Stoesst den Anrufprotokoll-Abruf als Hintergrundjob an, statt synchron im
+	Web-Request zu laufen - bei einem groesseren Rueckstand (12h-Haeppchen inkl.
+	Drosselung/Retry gegen Webex' Rate-Limit) ueberschreitet das sonst den
+	Request-Timeout. Das Ergebnis kommt per Realtime-Event
+	("webex_call_history_pull_done") zurueck, sobald der Job fertig ist."""
 	frappe.only_for("System Manager")
-	from erpnext_webex_integration.tasks import pull_call_history
+	settings = frappe.get_single("Webex Settings")
+	if not settings.enabled:
+		return {"status": "skipped", "reason": "Integration ist nicht aktiviert."}
 
-	return pull_call_history(force=True)
+	frappe.enqueue(
+		"erpnext_webex_integration.tasks.run_call_history_pull_background",
+		queue="long",
+		job_id=f"webex-manual-call-history-pull-{frappe.session.user}",
+		deduplicate=True,
+		user=frappe.session.user,
+	)
+	return {"status": "queued"}
 
 
 @frappe.whitelist()

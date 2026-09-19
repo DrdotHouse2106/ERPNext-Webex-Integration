@@ -167,6 +167,16 @@ def _to_webex_timestamp(dt):
 	return get_datetime(dt).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
+def run_call_history_pull_background(user):
+	"""Fuehrt pull_call_history() als Hintergrundjob aus und benachrichtigt den
+	aufrufenden Benutzer per Realtime-Event mit dem Ergebnis, sobald fertig - ein
+	manueller Abruf ueber "Jetzt abrufen" kann durch die 12h-Haeppchen inkl.
+	Drosselung/Retry gegen Webex' Rate-Limit laenger dauern als der Web-Request-
+	Timeout erlaubt ("Zeitüberschreitung der Anfrage")."""
+	result = pull_call_history(force=True)
+	frappe.publish_realtime("webex_call_history_pull_done", result, user=user)
+
+
 def _create_call_log_from_cdr(record, settings):
 	# Feldnamen der CDR-Antwort koennen je Mandant/API-Version variieren - defensiv auslesen.
 	# "Correlation ID" verbindet laut Webex-CDR-Doku alle Anruf-Schenkel desselben
@@ -318,6 +328,16 @@ def sync_phonebook(force=False):
 		"contacts_ok": contacts_ok,
 		"contacts_failed": contacts_failed,
 	}
+
+
+def run_phonebook_sync_background(user):
+	"""Fuehrt sync_phonebook() als Hintergrundjob aus und benachrichtigt den
+	aufrufenden Benutzer per Realtime-Event mit dem Ergebnis, sobald fertig - bei
+	vielen Kunden/Kontakten (inkl. Drosselung gegen Webex' Rate-Limit, 0.3s pro
+	Datensatz) ueberschreitet ein synchroner Sync sonst den Web-Request-Timeout
+	("Zeitüberschreitung der Anfrage")."""
+	result = sync_phonebook(force=True)
+	frappe.publish_realtime("webex_phonebook_sync_done", result, user=user)
 
 
 def _call_with_rate_limit_retry(func, *args, **kwargs):
@@ -508,9 +528,15 @@ def _build_organization_contact_payload(display_name, phone_numbers, first_name=
 	# (schemas: "urn:cisco:codev:identity:contact:core:1.0"): firstName/lastName
 	# liegen direkt auf oberster Ebene, nicht verschachtelt unter "name". Ein
 	# "primary"-Feld bei phoneNumbers kommt in den echten Antworten nicht vor.
+	# "schemas" und "contactType" sind beim Anlegen (POST) Pflichtfelder - beim
+	# Lesen (GET) tauchte "schemas" zwar in der Antwort auf, aber ohne diese beiden
+	# Felder im Request lehnt Webex mit 400 "NotNull.orgContactBean.contactType /
+	# schemas -> must not be null" ab.
 	# phone_numbers: Liste von {"value": ..., "type": "mobile"|"work"} - i.d.R. Mobil
 	# UND Festnetz, falls beide am Kunden/Kontakt hinterlegt sind.
 	return {
+		"schemas": ["urn:cisco:codev:identity:contact:core:1.0"],
+		"contactType": "person",
 		"displayName": display_name,
 		"firstName": first_name or display_name,
 		"lastName": last_name or "",

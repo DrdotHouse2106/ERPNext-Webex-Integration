@@ -1,8 +1,65 @@
+function show_phonebook_sync_result(res) {
+	frappe.msgprint({
+		title: __("Synchronisation abgeschlossen"),
+		message: __("Kunden erfolgreich: {0}{1}<br>Kontakte erfolgreich: {2}{3}", [
+			res.customers_ok,
+			res.customers_failed && res.customers_failed.length
+				? ` (fehlgeschlagen: ${res.customers_failed.join(", ")})`
+				: "",
+			res.contacts_ok,
+			res.contacts_failed && res.contacts_failed.length
+				? ` (fehlgeschlagen: ${res.contacts_failed.join(", ")})`
+				: "",
+		]),
+		indicator:
+			(res.customers_failed && res.customers_failed.length) ||
+			(res.contacts_failed && res.contacts_failed.length)
+				? "orange"
+				: "green",
+	});
+}
+
+function show_call_history_result(res) {
+	if (res.status === "error") {
+		frappe.msgprint({ title: __("Abruf fehlgeschlagen"), message: res.message, indicator: "red" });
+	} else if (res.status === "partial") {
+		frappe.msgprint({
+			title: __("Teilweise abgerufen ({0} Datensätze)", [res.fetched]),
+			message: res.message,
+			indicator: "orange",
+		});
+	} else {
+		frappe.show_alert({
+			message: __("{0} Datensätze von Webex erhalten (Zeitraum {1} – {2}).", [res.fetched, res.from, res.to]),
+			indicator: "green",
+		});
+	}
+}
+
 frappe.ui.form.on("Webex Settings", {
 	refresh(frm) {
 		if (window.erpnext_webex_integration && typeof erpnext_webex_integration.show_oauth_result === "function") {
 			erpnext_webex_integration.show_oauth_result();
 		}
+
+		// Manueller Telefonbuch-Sync/Anrufprotokoll-Abruf laeuft als Hintergrundjob
+		// (siehe sync_phonebook_now()/pull_call_history_now() in api.py) - bei vielen
+		// Kunden/Kontakten bzw. einem groesseren Rueckstand wuerde ein synchroner
+		// Web-Request sonst in ein Timeout laufen. Das Ergebnis kommt per Realtime-
+		// Event zurueck, sobald der Job fertig ist. frappe.realtime.off() zuerst,
+		// damit bei mehrfachem refresh() (z.B. nach frm.reload_doc()) nicht mehrere
+		// Listener denselben Erfolg mehrfach anzeigen.
+		frappe.realtime.off("webex_phonebook_sync_done");
+		frappe.realtime.on("webex_phonebook_sync_done", (res) => {
+			show_phonebook_sync_result(res);
+			frm.reload_doc();
+		});
+
+		frappe.realtime.off("webex_call_history_pull_done");
+		frappe.realtime.on("webex_call_history_pull_done", (res) => {
+			show_call_history_result(res);
+			frm.reload_doc();
+		});
 
 		frappe.model.with_doctype("Customer", () => {
 			const options = frappe
@@ -123,30 +180,12 @@ frappe.ui.form.on("Webex Settings", {
 					const res = r.message || {};
 					if (res.status === "skipped") {
 						frappe.msgprint(__("Übersprungen: {0}", [res.reason]));
-						return;
+					} else {
+						frappe.show_alert({
+							message: __("Synchronisation gestartet – läuft im Hintergrund, das Ergebnis erscheint automatisch."),
+							indicator: "blue",
+						});
 					}
-					frappe.msgprint({
-						title: __("Synchronisation abgeschlossen"),
-						message: __(
-							"Kunden erfolgreich: {0}{1}<br>Kontakte erfolgreich: {2}{3}",
-							[
-								res.customers_ok,
-								res.customers_failed && res.customers_failed.length
-									? ` (fehlgeschlagen: ${res.customers_failed.join(", ")})`
-									: "",
-								res.contacts_ok,
-								res.contacts_failed && res.contacts_failed.length
-									? ` (fehlgeschlagen: ${res.contacts_failed.join(", ")})`
-									: "",
-							]
-						),
-						indicator:
-							(res.customers_failed && res.customers_failed.length) ||
-							(res.contacts_failed && res.contacts_failed.length)
-								? "orange"
-								: "green",
-					});
-					frm.reload_doc();
 				},
 			});
 		}, __("Telefonbuch"));
@@ -180,29 +219,11 @@ frappe.ui.form.on("Webex Settings", {
 					const res = r.message || {};
 					if (res.status === "skipped") {
 						frappe.msgprint(__("Übersprungen: {0}", [res.reason]));
-					} else if (res.status === "error") {
-						frappe.msgprint({
-							title: __("Abruf fehlgeschlagen"),
-							message: res.message,
-							indicator: "red",
-						});
-					} else if (res.status === "partial") {
-						frappe.msgprint({
-							title: __("Teilweise abgerufen ({0} Datensätze)", [res.fetched]),
-							message: res.message,
-							indicator: "orange",
-						});
-						frm.reload_doc();
 					} else {
 						frappe.show_alert({
-							message: __("{0} Datensätze von Webex erhalten (Zeitraum {1} – {2}).", [
-								res.fetched,
-								res.from,
-								res.to,
-							]),
-							indicator: "green",
+							message: __("Abruf gestartet – läuft im Hintergrund, das Ergebnis erscheint automatisch."),
+							indicator: "blue",
 						});
-						frm.reload_doc();
 					}
 				},
 			});
